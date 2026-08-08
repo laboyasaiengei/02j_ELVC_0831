@@ -356,6 +356,12 @@
 
   .duty-section-title{ font-family:"Zen Maru Gothic",sans-serif; font-weight:700; color:var(--soil-800); font-size:15px; margin:2px 0 10px; display:flex; flex-direction:column; align-items:flex-start; gap:6px;}
     .duty-section-title .duty-actions{ display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; width:100%; }
+    .duty-section-title .duty-actions.scroll-row{
+      flex-wrap:nowrap; overflow-x:auto; justify-content:flex-start;
+      -webkit-overflow-scrolling:touch; scrollbar-width:none; padding-bottom:2px;
+    }
+    .duty-section-title .duty-actions.scroll-row::-webkit-scrollbar{ display:none; }
+    .duty-section-title .duty-actions.scroll-row .lock-btn{ flex:0 0 auto; }
   .duty-section-title .lock-btn{ font-size:11.5px; font-weight:600; color:var(--bark); background:var(--leaf-100); border:none; border-radius:999px; padding:5px 11px; cursor:pointer; white-space:nowrap; }
 
   .me-bar{ display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:9px 12px; margin-bottom:12px; font-size:12.5px; color:var(--ink-soft); }
@@ -374,10 +380,12 @@
   .pref-month-tag{ font-size:10.5px; font-weight:700; border-radius:999px; padding:3px 9px; white-space:nowrap; }
   .pref-month-tag.next{ background:var(--leaf-600); color:#fff; }
   .pref-month-tag.this{ background:var(--leaf-100); color:var(--ink-soft); }
+  .pref-status-row{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:-2px 0 8px; }
   .pref-status-badge{ font-size:10.5px; font-weight:700; border-radius:999px; padding:3px 9px; white-space:nowrap; }
   .pref-status-badge.open{ background:#dff0dc; color:var(--leaf-600); }
   .pref-status-badge.closed{ background:#efece2; color:var(--ink-soft); }
-  .pref-deadline-line{ font-size:11px; color:var(--bark); margin:-3px 0 6px; font-weight:600; }
+  .pref-deadline-big{ font-family:"Zen Maru Gothic",sans-serif; font-size:15px; font-weight:800; color:var(--alert); white-space:nowrap; }
+  .pref-deadline-big.passed{ color:var(--ink-soft); }
   .pref-month-sub{ font-size:11px; color:var(--ink-soft); margin-top:1px; }
   .pref-row{ display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:11px 13px; margin-bottom:9px; }
   .pref-row.is-past{ background:#f2f0e6; border-color:#e6e1d0; opacity:.68; }
@@ -494,6 +502,7 @@ html[data-theme="dark"] .pref-today-dot{ background:var(--accent-soft); }
 html[data-theme="dark"] .pref-toggle{ background:var(--surface-2); }
 html[data-theme="dark"] .pref-status-badge.open{ background:var(--accent-soft); }
 html[data-theme="dark"] .pref-status-badge.closed{ background:var(--surface-2); }
+html[data-theme="dark"] .pref-deadline-big.passed{ color:var(--ink-soft); }
 html[data-theme="dark"] .pref-priority{ background:var(--surface-2); }
 html[data-theme="dark"] .score-table th{ background:var(--surface-2); }
 html[data-theme="dark"] .cal-cell.duty{ background:var(--warn-bg); border-color:var(--warn-border); }
@@ -508,7 +517,13 @@ html[data-theme="dark"] .diff-added{ background:#1f3a22; border-left-color:#5fae
 html[data-theme="dark"] .diff-changed{ background:#3a3314; border-left-color:#e0b400; }
 html[data-theme="dark"] .diff-removed{ background:#3a221e; border-left-color:#e08066; }
 html[data-theme="dark"] .cal-cell{ border-color:#3a4a3e; }
-html[data-theme="dark"] .cal-cell.past{ opacity:.75; }
+html[data-theme="dark"] .cal-cell.past{ opacity:1; background:#111413; border-color:#252b26; }
+html[data-theme="dark"] .cal-cell.past.duty{ background:#1c1712; border-color:#3a2f1c; }
+html[data-theme="dark"] .cal-cell.past .cal-num{ color:#5c655e; }
+html[data-theme="dark"] .cal-cell.past.duty .cal-num{ color:#8a7452; }
+html[data-theme="dark"] .cal-cell.past .cal-label,
+html[data-theme="dark"] .cal-cell.past .cal-people,
+html[data-theme="dark"] .cal-cell.past .cal-changed{ color:#5c655e; }
 html[data-theme="dark"] .cal-dow{ color:#c3cdc0; }
 
 /* 切り替えボタン */
@@ -2792,8 +2807,8 @@ async function renderPrefPanel(el){
   const statusBadge = prefOpen
     ? `<span class="pref-status-badge open">受付中</span>`
     : `<span class="pref-status-badge closed">受付終了</span>`;
-  const deadlineLine = prefDeadline
-    ? `<div class="pref-deadline-line">締切: ${escapeHtml(prefDeadlineLabel())}</div>`
+  const deadlineInline = prefDeadline
+    ? `<span class="pref-deadline-big ${prefOpen?"":"passed"}">締切 ${escapeHtml(prefDeadlineLabel())}</span>`
     : ``;
   const nextSubMsg = prefOpen
     ? "当番の対応可能日を入力できます。優先希望があれば、登録してください。可能な限り考慮します。"
@@ -2803,13 +2818,13 @@ async function renderPrefPanel(el){
   const nextBlock = `
   <div class="pref-month-block">
     <div class="pref-month-head">
-      <div class="name">${nextM.year}年${nextM.month+1}月 <span class="pref-month-tag next">来月・希望日入力</span> ${statusBadge}</div>
+      <div class="name">${nextM.year}年${nextM.month+1}月 <span class="pref-month-tag next">来月・希望日入力</span></div>
       <span class="duty-actions">
         ${(prefOpen) ? `<button class="lock-btn" id="prefAllBtn">✅ 全日可能</button>` : ``}
         ${isAdmin ? `<button class="lock-btn" id="prefDeadlineBtn">🔒 締切設定</button>` : ``}
       </span>
     </div>
-    ${deadlineLine}
+    <div class="pref-status-row">${statusBadge}${deadlineInline}</div>
     <div class="pref-month-sub">${nextSubMsg}</div>
     ${nextRows || `<div class="empty-note">対象の日がありません</div>`}
   </div>`;
@@ -2824,7 +2839,14 @@ async function renderPrefPanel(el){
       ${thisRows || `<div class="empty-note">対象の日がありません</div>`}
     </div>`;
 
-  el.innerHTML = meBar + `<div class="duty-section-title">休日管理 希望表</div>` + nextBlock + thisBlock;
+  el.innerHTML = meBar + `<div class="duty-section-title">休日管理 希望表
+    <span class="duty-actions">
+      <button class="lock-btn" id="prefAdminLockBtn">${isAdmin?"🔓 管理者モード解除":"🔒 管理者パスワード入力"}</button>
+    </span>
+  </div>` + nextBlock + thisBlock;
+  document.getElementById("prefAdminLockBtn").addEventListener("click", ()=>{
+    if(isAdmin) lockAdmin(); else unlockAdmin();
+  });
   document.getElementById("changeNameBtn").addEventListener("click", ()=>openNameModal());
   const prefAllBtnEl = document.getElementById("prefAllBtn");
   if(prefAllBtnEl) prefAllBtnEl.addEventListener("click", async ()=>{
@@ -2924,10 +2946,9 @@ async function renderScorePanel(el){
   el.innerHTML = `
     <div class="duty-section-title">
       スコア
-      <span class="duty-actions">
+      <span class="duty-actions scroll-row">
         <button class="lock-btn" id="adminLockBtn">${isAdmin?"🔓 管理者モード解除":"🔒 管理者パスワード入力"}</button>
         ${isAdmin ? `<button class="lock-btn" id="rosterBtn">🔒 名簿を管理</button>` : ``}
-        ${isAdmin ? `<button class="lock-btn" id="specialDateBtn">🔒 特例日を管理</button>` : ``}
         ${isAdmin ? `<button class="lock-btn" id="pwChangeBtn">🔒 パスワード変更</button>` : ``}
         ${isAdmin ? `<button class="lock-btn" id="restorePwChangeBtn">🔒 復元パスコード変更</button>` : ``}
       </span>
@@ -2948,13 +2969,6 @@ async function renderScorePanel(el){
   document.getElementById("adminLockBtn").addEventListener("click", ()=>{
     if(isAdmin) lockAdmin(); else unlockAdmin();
   });
-  const specialDateBtnEl = document.getElementById("specialDateBtn");
-  if(specialDateBtnEl){
-    specialDateBtnEl.addEventListener("click", ()=>{
-      if(!unlockAdmin()) return;
-      openSpecialDateModal();
-    });
-  }
   const rosterBtnEl = document.getElementById("rosterBtn");
   if(rosterBtnEl){
     rosterBtnEl.addEventListener("click", ()=>{
@@ -3075,9 +3089,10 @@ async function renderCalendarPanel(el){
   await loadCalendarRange(allDates);
   await loadPreferencesRange(allDates.filter(isDutyDate));
     let html = `<div class="duty-section-title">当番カレンダー
-    <span class="duty-actions">
+    <span class="duty-actions scroll-row">
       <button class="lock-btn" id="editorLockBtn">${isAdmin?"🔓 管理者モード解除":"🔒 管理者パスワード入力"}</button>
       ${isAdmin ? `<button class="lock-btn" id="monthDataBtn">🔒 月を指定してデータ表示</button>` : ``}
+      ${isAdmin ? `<button class="lock-btn" id="specialDateBtn">🔒 特例日を管理</button>` : ``}
     </span>
   </div>`;
     months.forEach((m, mIdx)=>{
@@ -3110,6 +3125,13 @@ async function renderCalendarPanel(el){
     monthDataBtnEl.addEventListener("click", ()=>{
       if(!unlockAdmin()) return;
       openMonthDataModal();
+    });
+  }
+  const specialDateBtnEl = document.getElementById("specialDateBtn");
+  if(specialDateBtnEl){
+    specialDateBtnEl.addEventListener("click", ()=>{
+      if(!unlockAdmin()) return;
+      openSpecialDateModal();
     });
   }
   el.querySelectorAll("[data-print-month]").forEach(btn=>{
