@@ -89,6 +89,7 @@
   letter-spacing: .02em;
   opacity: .75;
   margin-top: 1px;
+  white-space: nowrap;
 }
   .date-pill{
     font-size:11px; color:#e7f0e6; background:rgba(255,255,255,.08);
@@ -551,7 +552,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 <header class="top">
   <div class="brand-row">
   <div class="brand">圃場管理システム ATLAS
-    <div class="brand-sub">Agricultural Task<br>and Labor Administration System</div>
+    <div class="brand-sub">Agricultural Task and Labor Administration System</div>
   </div>
   <div style="display:flex; align-items:center; gap:8px; flex:0 0 auto;">
     <div class="date-pill" id="datePill">–</div>
@@ -935,7 +936,7 @@ function getTodayStr(){ return formatDateStr(new Date()); }
 function parseDateStr(dateStr){ return new Date(dateStr+"T00:00:00"); }
 function dowLabelForDate(d){
   const days=["日","月","火","水","木","金","土"];
-  return (d.getMonth()+1)+"月"+d.getDate()+"日("+days[d.getDay()]+")";
+  return (d.getMonth()+1)+"/"+d.getDate()+"("+days[d.getDay()]+")";
 }
 function dowLabel(){ return dowLabelForDate(new Date()); }
 function shortDowLabel(dateStr){
