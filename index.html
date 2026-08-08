@@ -355,15 +355,17 @@
   }
   .mode-switch button.active{ background:#fff; color:var(--soil-800); }
 
-  .duty-section-title{ font-family:"Zen Maru Gothic",sans-serif; font-weight:700; color:var(--soil-800); font-size:15px; margin:2px 0 10px; display:flex; flex-direction:column; align-items:flex-start; gap:6px;}
-    .duty-section-title .duty-actions{ display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; width:100%; }
-    .duty-section-title .duty-actions.scroll-row{
-      flex-wrap:nowrap; overflow-x:auto; justify-content:flex-start;
+  .duty-section-title{ font-family:"Zen Maru Gothic",sans-serif; font-weight:700; color:var(--soil-800); font-size:15px; margin:2px 0 10px; display:flex; flex-direction:row; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px 10px;}
+  .duty-actions{ display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; margin-left:auto; min-width:0; }
+    .duty-actions-row{ display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; margin:0 0 10px; width:100%; }
+    .duty-actions.scroll-row, .duty-actions-row.scroll-row{
+      flex-wrap:nowrap; overflow-x:auto; justify-content:flex-start; max-width:100%;
       -webkit-overflow-scrolling:touch; scrollbar-width:none; padding-bottom:2px;
     }
-    .duty-section-title .duty-actions.scroll-row::-webkit-scrollbar{ display:none; }
-    .duty-section-title .duty-actions.scroll-row .lock-btn{ flex:0 0 auto; }
+    .duty-actions.scroll-row::-webkit-scrollbar, .duty-actions-row.scroll-row::-webkit-scrollbar{ display:none; }
+    .duty-actions.scroll-row .lock-btn, .duty-actions-row.scroll-row .lock-btn{ flex:0 0 auto; }
   .duty-section-title .lock-btn{ font-size:11.5px; font-weight:600; color:var(--bark); background:var(--leaf-100); border:none; border-radius:999px; padding:5px 11px; cursor:pointer; white-space:nowrap; }
+  .duty-section-title > .title-text{ flex:0 0 auto; white-space:nowrap; }
 
   .me-bar{ display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:9px 12px; margin-bottom:12px; font-size:12.5px; color:var(--ink-soft); }
   .me-bar b{ color:var(--soil-800); font-family:"Zen Maru Gothic",sans-serif; }
@@ -2840,7 +2842,7 @@ async function renderPrefPanel(el){
       ${thisRows || `<div class="empty-note">対象の日がありません</div>`}
     </div>`;
 
-  el.innerHTML = meBar + `<div class="duty-section-title">休日管理 希望表
+  el.innerHTML = meBar + `<div class="duty-section-title"><span class="title-text">休日管理 希望表</span>
     <span class="duty-actions">
       <button class="lock-btn" id="prefAdminLockBtn">${isAdmin?"🔓 管理者モード解除":"🔒 管理者パスワード入力"}</button>
     </span>
@@ -2945,15 +2947,17 @@ async function renderScorePanel(el){
       <td><b>${scores[name]}</b>pt</td>
     </tr>`).join("");
   el.innerHTML = `
-    <div class="duty-section-title">
-      スコア
-      <span class="duty-actions scroll-row">
+    <div class="duty-section-title"><span class="title-text">スコア</span>
+      <span class="duty-actions">
         <button class="lock-btn" id="adminLockBtn">${isAdmin?"🔓 管理者モード解除":"🔒 管理者パスワード入力"}</button>
-        ${isAdmin ? `<button class="lock-btn" id="rosterBtn">🔒 名簿を管理</button>` : ``}
-        ${isAdmin ? `<button class="lock-btn" id="pwChangeBtn">🔒 パスワード変更</button>` : ``}
-        ${isAdmin ? `<button class="lock-btn" id="restorePwChangeBtn">🔒 復元パスコード変更</button>` : ``}
       </span>
     </div>
+    ${isAdmin ? `
+    <div class="duty-actions-row scroll-row">
+      <button class="lock-btn" id="rosterBtn">🔒 名簿を管理</button>
+      <button class="lock-btn" id="pwChangeBtn">🔒 パスワード変更</button>
+      <button class="lock-btn" id="restorePwChangeBtn">🔒 復元パスコード変更</button>
+    </div>` : ``}
     <div class="me-bar">
       集計期間:
       <select id="periodSelect" style="border:1px solid var(--line); border-radius:8px; padding:5px 8px; font-size:12.5px;">
@@ -3089,13 +3093,16 @@ async function renderCalendarPanel(el){
   months.forEach(m=>{ allDates = allDates.concat(monthDates(m.year, m.month).list); });
   await loadCalendarRange(allDates);
   await loadPreferencesRange(allDates.filter(isDutyDate));
-    let html = `<div class="duty-section-title">当番カレンダー
-    <span class="duty-actions scroll-row">
+    let html = `<div class="duty-section-title"><span class="title-text">当番カレンダー</span>
+    <span class="duty-actions">
       <button class="lock-btn" id="editorLockBtn">${isAdmin?"🔓 管理者モード解除":"🔒 管理者パスワード入力"}</button>
-      ${isAdmin ? `<button class="lock-btn" id="monthDataBtn">🔒 月を指定してデータ表示</button>` : ``}
-      ${isAdmin ? `<button class="lock-btn" id="specialDateBtn">🔒 特例日を管理</button>` : ``}
     </span>
-  </div>`;
+  </div>
+  ${isAdmin ? `
+  <div class="duty-actions-row scroll-row">
+    <button class="lock-btn" id="monthDataBtn">🔒 月を指定してデータ表示</button>
+    <button class="lock-btn" id="specialDateBtn">🔒 特例日を管理</button>
+  </div>` : ``}`;
     months.forEach((m, mIdx)=>{
     const { list } = monthDates(m.year, m.month);
     html += `<div class="cal-month-block" id="calMonthBlock${mIdx}" data-year="${m.year}" data-month="${m.month+1}">`;
