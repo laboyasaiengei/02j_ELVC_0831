@@ -357,13 +357,15 @@
 
   .duty-section-title{ font-family:"Zen Maru Gothic",sans-serif; font-weight:700; color:var(--soil-800); font-size:15px; margin:2px 0 10px; display:flex; flex-direction:row; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px 10px;}
   .duty-actions{ display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; margin-left:auto; min-width:0; }
-    .duty-actions-row{ display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; margin:0 0 10px; width:100%; }
-    .duty-actions.scroll-row, .duty-actions-row.scroll-row{
-      flex-wrap:nowrap; overflow-x:auto; justify-content:flex-start; max-width:100%;
+    /* duty-actions-row: 右揃えの"外枠"。中の.scroll-rowが実際に横スクロールする"中身"で、
+       役割を分けることで「入りきる時は右揃え」「入りきらない時は左端からスクロール」を両立させる */
+    .duty-actions-row{ display:flex; justify-content:flex-end; width:100%; margin:0 0 10px; min-width:0; }
+    .duty-actions-row .scroll-row{
+      display:flex; flex-wrap:nowrap; gap:6px; overflow-x:auto; max-width:100%;
       -webkit-overflow-scrolling:touch; scrollbar-width:none; padding-bottom:2px;
     }
-    .duty-actions.scroll-row::-webkit-scrollbar, .duty-actions-row.scroll-row::-webkit-scrollbar{ display:none; }
-    .duty-actions.scroll-row .lock-btn, .duty-actions-row.scroll-row .lock-btn{ flex:0 0 auto; }
+    .duty-actions-row .scroll-row::-webkit-scrollbar{ display:none; }
+    .duty-actions-row .scroll-row .lock-btn{ flex:0 0 auto; }
   .duty-section-title .lock-btn{ font-size:11.5px; font-weight:600; color:var(--bark); background:var(--leaf-100); border:none; border-radius:999px; padding:5px 11px; cursor:pointer; white-space:nowrap; }
   .duty-section-title > .title-text{ flex:0 0 auto; white-space:nowrap; }
 
@@ -2953,11 +2955,11 @@ async function renderScorePanel(el){
       </span>
     </div>
     ${isAdmin ? `
-    <div class="duty-actions-row scroll-row">
+    <div class="duty-actions-row"><div class="scroll-row">
       <button class="lock-btn" id="rosterBtn">🔒 名簿を管理</button>
       <button class="lock-btn" id="pwChangeBtn">🔒 パスワード変更</button>
       <button class="lock-btn" id="restorePwChangeBtn">🔒 復元パスコード変更</button>
-    </div>` : ``}
+    </div></div>` : ``}
     <div class="me-bar">
       集計期間:
       <select id="periodSelect" style="border:1px solid var(--line); border-radius:8px; padding:5px 8px; font-size:12.5px;">
@@ -3099,10 +3101,10 @@ async function renderCalendarPanel(el){
     </span>
   </div>
   ${isAdmin ? `
-  <div class="duty-actions-row scroll-row">
+  <div class="duty-actions-row"><div class="scroll-row">
     <button class="lock-btn" id="monthDataBtn">🔒 月を指定してデータ表示</button>
     <button class="lock-btn" id="specialDateBtn">🔒 特例日を管理</button>
-  </div>` : ``}`;
+  </div></div>` : ``}`;
     months.forEach((m, mIdx)=>{
     const { list } = monthDates(m.year, m.month);
     html += `<div class="cal-month-block" id="calMonthBlock${mIdx}" data-year="${m.year}" data-month="${m.month+1}">`;
