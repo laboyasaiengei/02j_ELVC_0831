@@ -77,11 +77,12 @@
     padding:calc(9px + env(safe-area-inset-top)) 14px 6px 14px;
     box-shadow:0 2px 10px rgba(38,64,47,.25);
   }
-  .brand-row{
+    .brand-row{
     display:flex; align-items:center; justify-content:space-between;
-    gap:8px; flex-wrap:wrap;
+    gap:10px;
   }
-  .brand{font-weight:900; font-size:15.5px; letter-spacing:.02em; min-width:0;}
+  .brand{font-weight:900; font-size:15.5px; letter-spacing:.02em;}
+  .brand-title-row{display:flex; align-items:center; gap:7px;}
   .brand-sub{
   font-family: sans-serif;
   font-weight: 400;
@@ -92,8 +93,8 @@
   white-space: nowrap;
 }
   .date-pill{
-    font-size:11px; color:#e7f0e6; background:rgba(255,255,255,.08);
-    padding:4px 9px; border-radius:999px; white-space:nowrap;
+    font-size:10.5px; color:#e7f0e6; background:rgba(255,255,255,.08);
+    padding:3px 8px; border-radius:999px; white-space:nowrap;
   }
     .brand-row > div:last-child{ margin-left:auto; }
 
@@ -193,15 +194,18 @@
     margin-bottom:9px;
     overflow:hidden;
   }
-  .section-card.readonly{opacity:.92;}
+    .section-card.readonly{opacity:.92;}
   .section-head{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:11px 14px; cursor:pointer; gap:10px;
+    display:flex; flex-direction:column; gap:4px;
+    padding:11px 14px; cursor:pointer;
     user-select:none;
   }
-  .section-head .titles{display:flex; flex-direction:column; min-width:0;}
-  .section-title{font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:15.5px; color:var(--soil-800); display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
-  .section-assignee{font-size:11.5px; color:var(--bark); margin-top:2px; font-weight:500;}
+  .section-top-row{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .section-title{font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:15.5px; color:var(--soil-800); display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0;}
+  .section-title-actions{display:flex; align-items:center; gap:8px; flex:0 0 auto;}
+  .section-sub-row{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .section-assignee{font-size:11.5px; color:var(--bark); font-weight:500;}
+  .section-edit-actions{display:flex; align-items:center; gap:6px; flex:0 0 auto; margin-left:auto;}
   .section-alert{
     display:inline-flex; align-items:center; gap:4px;
     font-family:"Inter","Noto Sans JP",sans-serif;
@@ -211,7 +215,7 @@
     white-space:pre-wrap; word-break:break-word;
   }
   .section-card.has-alert{border-color:var(--alert);}
-  .section-meta{display:flex; align-items:center; gap:8px; flex:0 0 auto;}
+  .section-count{font-size:12px; color:var(--ink-soft); font-weight:600; white-space:nowrap;}
   .section-count{font-size:12px; color:var(--ink-soft); font-weight:600; white-space:nowrap;}
   .icon-btn{width:34px; height:34px; border:none; background:none; display:flex; align-items:center; justify-content:center; color:#b9ab98; cursor:pointer; border-radius:8px; flex:0 0 auto;}
   .icon-btn:active{background:#f1ece0;}
@@ -578,13 +582,12 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 
 <header class="top">
   <div class="brand-row">
-  <div class="brand">圃場管理システム ATLAS
+  <div class="brand">
+    <span class="brand-title-row">圃場管理システム ATLAS<span class="date-pill" id="datePill">–</span></span>
     <div class="brand-sub">Agricultural Task and Labor Administration System</div>
   </div>
-  <div style="display:flex; align-items:center; gap:8px; flex:0 0 auto;">
-    <div class="date-pill" id="datePill">–</div>
-    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="テーマ切り替え"></button>
-  </div>
+  <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="テーマ切り替え"></button>
+</div>
 </div>
   <div class="mode-switch" id="modeSwitch">
     <button data-mode="check" class="active">✅ 栽培管理</button>
@@ -1473,17 +1476,16 @@ function render(){
 
     const head=document.createElement("div");
     head.className="section-head";
-    head.innerHTML=`
+        head.innerHTML=`
       <div class="titles">
-        <div class="section-title">${escapeHtml(section.name)}${section.alert?`<span class="section-alert">⚠️ ${escapeHtml(section.alert)}</span>`:``}</div>
+        <div class="section-title">${escapeHtml(section.name)}${section.alert?`<span class="section-alert">⚠️ ${escapeHtml(section.alert)}</span>`:``}${(readOnly || !isOpen || !editMode) ? `` : `<button class="icon-btn" data-edit-alert="${section.id}" title="注意事項を編集" style="font-size:14px; width:26px; height:26px; display:inline-flex; vertical-align:middle;">⚠️</button>`}</div>
         ${section.assignee?`<div class="section-assignee">担当: ${escapeHtml(section.assignee)}</div>`:``}
       </div>
-            <div class="section-meta">
+      <div class="section-meta">
         <span class="section-count" data-count></span>
         ${(readOnly || !isOpen) ? `` : `<button class="icon-btn" data-toggle-section="${section.id}" title="まとめてチェック" style="font-size:18px;">☑</button>`}
         ${(readOnly || !isOpen || !editMode) ? `` : `
           <button class="icon-btn" data-edit-assignee="${section.id}" title="担当を編集">${pencilSvg()}</button>
-          <button class="icon-btn" data-edit-alert="${section.id}" title="注意事項を編集" style="font-size:15px;">⚠️</button>
           <div class="move-stack">
             <button data-move-section="${section.id}|up" title="上へ移動" ${idx===0?"disabled":""}>${upSvg()}</button>
             <button data-move-section="${section.id}|down" title="下へ移動" ${idx===sections.length-1?"disabled":""}>${downSvg()}</button>
