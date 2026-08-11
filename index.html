@@ -81,8 +81,8 @@
     display:flex; align-items:center; justify-content:space-between;
     gap:10px;
   }
-  .brand{font-weight:900; font-size:15.5px; letter-spacing:.02em;}
-  .brand-sub{
+.brand{font-weight:900; font-size:15.5px; letter-spacing:.02em; min-width:0; overflow:hidden;}
+.brand-sub{
   font-family: sans-serif;
   font-weight: 400;
   font-size: 9.5px;
@@ -90,6 +90,8 @@
   opacity: .75;
   margin-top: 1px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
   .date-pill{
     font-size:11px; color:#e7f0e6; background:rgba(255,255,255,.08);
