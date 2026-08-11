@@ -1476,22 +1476,30 @@ function render(){
 
     const head=document.createElement("div");
     head.className="section-head";
-        head.innerHTML=`
-      <div class="titles">
-        <div class="section-title">${escapeHtml(section.name)}${section.alert?`<span class="section-alert">⚠️ ${escapeHtml(section.alert)}</span>`:``}${(readOnly || !isOpen || !editMode) ? `` : `<button class="icon-btn" data-edit-alert="${section.id}" title="注意事項を編集" style="font-size:14px; width:26px; height:26px; display:inline-flex; vertical-align:middle;">⚠️</button>`}</div>
-        ${section.assignee?`<div class="section-assignee">担当: ${escapeHtml(section.assignee)}</div>`:``}
+            head.innerHTML=`
+      <div class="section-top-row">
+        <div class="section-title">${escapeHtml(section.name)}${section.alert?`<span class="section-alert">⚠️ ${escapeHtml(section.alert)}</span>`:``}</div>
+        <div class="section-title-actions">
+          <span class="section-count" data-count></span>
+          ${(readOnly || !isOpen) ? `` : `<button class="icon-btn" data-toggle-section="${section.id}" title="まとめてチェック" style="font-size:18px;">☑</button>`}
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+        </div>
       </div>
-      <div class="section-meta">
-        <span class="section-count" data-count></span>
-        ${(readOnly || !isOpen) ? `` : `<button class="icon-btn" data-toggle-section="${section.id}" title="まとめてチェック" style="font-size:18px;">☑</button>`}
-        ${(readOnly || !isOpen || !editMode) ? `` : `
+      ${(section.assignee || (!readOnly && isOpen && editMode)) ? `
+      <div class="section-sub-row">
+        <div class="section-assignee">${section.assignee?`担当: ${escapeHtml(section.assignee)}`:``}</div>
+        ${(!readOnly && isOpen && editMode) ? `
+        <div class="section-edit-actions">
           <button class="icon-btn" data-edit-assignee="${section.id}" title="担当を編集">${pencilSvg()}</button>
+          <button class="icon-btn" data-edit-alert="${section.id}" title="注意事項を編集" style="font-size:15px;">⚠️</button>
           <div class="move-stack">
             <button data-move-section="${section.id}|up" title="上へ移動" ${idx===0?"disabled":""}>${upSvg()}</button>
             <button data-move-section="${section.id}|down" title="下へ移動" ${idx===sections.length-1?"disabled":""}>${downSvg()}</button>
           </div>
           <button class="icon-btn" data-del-section="${section.id}" title="この場所を削除">${trashSvg()}</button>
-        `}
+        </div>` : ``}
+      </div>` : ``}
+    `;
 
         <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
       </div>`;
