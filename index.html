@@ -267,6 +267,22 @@
     border:none; background:var(--leaf-600); color:#fff; border-radius:10px;
     padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer; flex:0 0 auto;
   }
+  .add-row-sync{
+    display:flex; gap:14px; padding:0 14px 12px; margin-top:-6px;
+  }
+  .sync-check{
+    display:flex; align-items:center; gap:5px; font-size:12px; color:var(--ink-soft); cursor:pointer;
+  }
+  .sync-check input{ width:15px; height:15px; margin:0; accent-color:var(--leaf-600); }
+  .sync-modal-list{ display:flex; flex-direction:column; gap:10px; margin:4px 0 16px; }
+  .sync-modal-list .sync-check{ font-size:13.5px; color:var(--ink); }
+  .sync-modal-list .sync-check input{ width:18px; height:18px; }
+  .sync-modal-actions{ display:flex; gap:8px; }
+  .sync-modal-actions button{
+    border:none; border-radius:10px; padding:11px 14px; font-size:13.5px; font-weight:600; cursor:pointer;
+  }
+  .sync-modal-actions .primary{ background:var(--leaf-600); color:#fff; flex:1; }
+  .sync-modal-actions .cancel{ background:#efece2; color:var(--ink-soft); }
 
   .add-section-card{
     border:2px dashed #cdbfa0; border-radius:16px; padding:14px; margin-bottom:12px;
@@ -513,6 +529,7 @@ html[data-theme="dark"] .add-row input{ background:var(--surface-2); border-colo
 html[data-theme="dark"] .add-section-card{ border-color:#4a5a4c; }
 html[data-theme="dark"] .add-section-form input{ background:var(--surface-2); border-color:var(--line); color:var(--ink); }
 html[data-theme="dark"] .add-section-form .cancel{ background:var(--surface-2); color:var(--ink-soft); }
+html[data-theme="dark"] .sync-modal-actions .cancel{ background:var(--surface-2); color:var(--ink-soft); }
 html[data-theme="dark"] .modal-sheet{ background:#1c211d; }
 html[data-theme="dark"] .backup-pager button:disabled{ background:var(--surface-2); }
 html[data-theme="dark"] .modal-close{ background:var(--surface-2); }
@@ -680,6 +697,18 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
     <div id="specialDateForm"></div>
     <div id="specialDateList"></div>
     <button class="modal-close" id="closeSpecialDateModal">閉じる</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="taskSyncModal">
+  <div class="modal-sheet">
+    <div class="modal-title" id="taskSyncTitle">他の時間帯からも削除しますか？</div>
+    <div class="modal-sub" id="taskSyncSub">同じ内容のタスクが見つかりました。合わせて削除するものを選んでください</div>
+    <div class="sync-modal-list" id="taskSyncList"></div>
+    <div class="sync-modal-actions">
+      <button class="primary" id="taskSyncConfirm">削除する</button>
+      <button class="cancel" id="taskSyncCancel">キャンセル</button>
+    </div>
   </div>
 </div>
 
@@ -956,6 +985,10 @@ const INITIAL_DATA = {
 };
 
 /* ---------- utils ---------- */
+// 朝/昼/夕の一覧管理（他タブへのコピー・連動削除機能で使用。場所は「同じ名前のセクション」で対応付けする）
+const TAB_ORDER = ["asa","hiru","yugata"];
+const TAB_LABELS = { asa:"朝", hiru:"昼", yugata:"夕" };
+function otherTabsOf(tab){ return TAB_ORDER.filter(t=>t!==tab); }
 function pad(n){ return n<10 ? "0"+n : ""+n; }
 function genId(prefix){ return prefix+"_"+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function formatDateStr(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
@@ -1533,6 +1566,16 @@ function render(){
         <button data-add-btn="${section.id}">追加</button>
       `;
       list.appendChild(addRow);
+
+      const addRowSync=document.createElement("div");
+      addRowSync.className="add-row-sync";
+      addRowSync.innerHTML = otherTabsOf(currentTab).map(t=>`
+        <label class="sync-check">
+          <input type="checkbox" data-add-sync="${section.id}|${t}">
+          ${TAB_LABELS[t]}にも追加
+        </label>
+      `).join("");
+      list.appendChild(addRowSync);
     }
 
     card.appendChild(list);
@@ -1705,16 +1748,52 @@ function render(){
     e.stopPropagation();
     if(isHistoryMode()) return;
     const [sId,tId]=el.getAttribute("data-remove-task").split("|");
-    pushUndo(currentTab);
-    await transactStructure(currentTab, (sections)=>{
-      const sec = sections.find(s=>s.id===sId);
-      if(sec) sec.tasks = sec.tasks.filter(t=>t.id!==tId);
-      return sections;
+    const sourceSec = (structures[currentTab]||[]).find(s=>s.id===sId);
+    const task = sourceSec ? sourceSec.tasks.find(t=>t.id===tId) : null;
+
+    const removeFromCurrent = async ()=>{
+      pushUndo(currentTab);
+      await transactStructure(currentTab, (sections)=>{
+        const sec = sections.find(s=>s.id===sId);
+        if(sec) sec.tasks = sec.tasks.filter(t=>t.id!==tId);
+        return sections;
+      });
+      delete todayChecked[tId];
+      checkedMap = todayChecked;
+      await saveChecks(currentTab);
+    };
+
+    // 他タブに同じ場所名・同じ内容のタスクがあれば、連動削除の候補として確認する
+    let matches=[];
+    if(sourceSec && task && firebaseReady){
+      for(const t of otherTabsOf(currentTab)){
+        try{
+          const snap = await structureRef(t).get();
+          const sections = (snap.exists && snap.data() && snap.data().sections) ? snap.data().sections : [];
+          const sec = sections.find(s=>s.name===sourceSec.name);
+          if(sec && sec.tasks.some(tk=>tk.text===task.text)) matches.push(t);
+        }catch(err){ /* 確認できなければ通常削除のみ行う */ }
+      }
+    }
+
+    if(matches.length===0){
+      await removeFromCurrent();
+      render();
+      return;
+    }
+
+    openTaskSyncModal(matches, async (selectedTabs)=>{
+      await removeFromCurrent();
+      for(const t of selectedTabs){
+        await transactStructure(t, (sections)=>{
+          const sec = sections.find(s=>s.name===sourceSec.name);
+          if(sec) sec.tasks = sec.tasks.filter(tk=>tk.text!==task.text);
+          return sections;
+        });
+      }
+      render();
+      showToast(selectedTabs.length ? `削除しました（${selectedTabs.map(t=>TAB_LABELS[t]).join("・")}からも削除）` : "削除しました");
     });
-    delete todayChecked[tId];
-    checkedMap = todayChecked;
-    await saveChecks(currentTab);
-    render();
   });
 });
   main.querySelectorAll("[data-del-section]").forEach(el=>{
@@ -1745,15 +1824,37 @@ function render(){
     const assigneeInput=main.querySelector(`[data-add-assignee="${sId}"]`);
     const val=input.value.trim();
     if(!val) return;
+    const assigneeVal = assigneeInput ? assigneeInput.value.trim() : "";
+    const sourceSec = (structures[currentTab]||[]).find(s=>s.id===sId);
+    const sectionName = sourceSec ? sourceSec.name : "";
+    const syncBoxes = Array.from(main.querySelectorAll(`[data-add-sync^="${sId}|"]`)).filter(cb=>cb.checked);
     pushUndo(currentTab);
-    const newTask = { id:genId("t"), text:val, assignee: assigneeInput ? assigneeInput.value.trim() : "" };
+    const newTask = { id:genId("t"), text:val, assignee: assigneeVal };
     await transactStructure(currentTab, (sections)=>{
       const sec = sections.find(s=>s.id===sId);
       if(sec) sec.tasks.push(newTask);
       return sections;
     });
+    let copied=[], skipped=[];
+    for(const cb of syncBoxes){
+      const targetTab = cb.getAttribute("data-add-sync").split("|")[1];
+      let result="skipped";
+      await transactStructure(targetTab, (sections)=>{
+        const sec = sections.find(s=>s.name===sectionName);
+        if(!sec) return sections;
+        if(sec.tasks.some(t=>t.text===val)){ result="dup"; return sections; }
+        sec.tasks.push({ id:genId("t"), text:val, assignee:assigneeVal });
+        result="copied";
+        return sections;
+      });
+      if(result==="copied") copied.push(TAB_LABELS[targetTab]);
+      else skipped.push(TAB_LABELS[targetTab]);
+    }
     render();
-    showToast("タスクを追加しました");
+    let msg = "タスクを追加しました";
+    if(copied.length) msg += `（${copied.join("・")}にもコピー）`;
+    if(skipped.length) msg += `（${skipped.join("・")}は同名の場所がないかすでに同じ内容があるためスキップ）`;
+    showToast(msg);
   });
 });
   main.querySelectorAll("[data-add-input], [data-add-assignee]").forEach(input=>{
@@ -3131,6 +3232,31 @@ function renderSpecialDateList(){
 }
 document.getElementById("closeSpecialDateModal").addEventListener("click", ()=>{
   document.getElementById("specialDateModal").classList.remove("show");
+});
+
+/* ---------- 他タブへのタスク連動削除（クルクル対策で使ったモーダルと同じ仕組みを流用） ---------- */
+let taskSyncCallback = null;
+function openTaskSyncModal(tabs, onConfirm){
+  const listEl = document.getElementById("taskSyncList");
+  listEl.innerHTML = tabs.map(t=>`
+    <label class="sync-check">
+      <input type="checkbox" data-sync-tab="${t}">
+      ${TAB_LABELS[t]}からも削除する
+    </label>
+  `).join("");
+  taskSyncCallback = onConfirm;
+  document.getElementById("taskSyncModal").classList.add("show");
+}
+document.getElementById("taskSyncConfirm").addEventListener("click", async ()=>{
+  const selected = Array.from(document.querySelectorAll("#taskSyncList [data-sync-tab]"))
+    .filter(cb=>cb.checked).map(cb=>cb.getAttribute("data-sync-tab"));
+  document.getElementById("taskSyncModal").classList.remove("show");
+  const cb = taskSyncCallback; taskSyncCallback = null;
+  if(cb) await cb(selected);
+});
+document.getElementById("taskSyncCancel").addEventListener("click", ()=>{
+  document.getElementById("taskSyncModal").classList.remove("show");
+  taskSyncCallback = null;
 });
 
 /* ---- カレンダーパネル(今月・来月) ---- */
