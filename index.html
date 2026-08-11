@@ -81,8 +81,8 @@
     display:flex; align-items:center; justify-content:space-between;
     gap:10px;
   }
-.brand{font-weight:900; font-size:15.5px; letter-spacing:.02em; min-width:0; overflow:hidden;}
-.brand-sub{
+  .brand{font-weight:900; font-size:15.5px; letter-spacing:.02em;}
+  .brand-sub{
   font-family: sans-serif;
   font-weight: 400;
   font-size: 9.5px;
@@ -90,8 +90,6 @@
   opacity: .75;
   margin-top: 1px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
   .date-pill{
     font-size:11px; color:#e7f0e6; background:rgba(255,255,255,.08);
@@ -203,6 +201,14 @@
   .section-head .titles{display:flex; flex-direction:column; min-width:0;}
   .section-title{font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:15.5px; color:var(--soil-800);}
   .section-assignee{font-size:11.5px; color:var(--bark); margin-top:2px; font-weight:500;}
+  .section-alert{
+    display:flex; align-items:flex-start; gap:5px;
+    font-size:11.5px; line-height:1.5; font-weight:600;
+    color:#7a4b12; background:#fff3e0; border:1px solid #f0c98a;
+    border-radius:8px; padding:5px 8px; margin-top:6px;
+    white-space:pre-wrap; word-break:break-word;
+  }
+  .section-card.has-alert{border-color:var(--alert);}
   .section-meta{display:flex; align-items:center; gap:8px; flex:0 0 auto;}
   .section-count{font-size:12px; color:var(--ink-soft); font-weight:600; white-space:nowrap;}
   .icon-btn{width:34px; height:34px; border:none; background:none; display:flex; align-items:center; justify-content:center; color:#b9ab98; cursor:pointer; border-radius:8px; flex:0 0 auto;}
@@ -502,6 +508,7 @@ html[data-theme="dark"] .passcode-keypad button{ background:var(--surface-2); co
 html[data-theme="dark"] .passcode-keypad button:active{ background:#2f382f; }
 html[data-theme="dark"] .config-banner{ background:var(--warn-bg); border-color:var(--warn-border); color:var(--warn-text); }
 html[data-theme="dark"] .config-banner code{ background:var(--surface-2); border-color:var(--warn-border); color:var(--warn-text); }
+html[data-theme="dark"] .section-alert{ background:var(--warn-bg); border-color:var(--warn-border); color:var(--warn-text); }
 html[data-theme="dark"] .name-chip{ background:var(--surface-2); }
 html[data-theme="dark"] .pref-row.is-past{ background:#181d19; border-color:var(--surface-2); }
 html[data-theme="dark"] .pref-row.is-today{ background:var(--accent-soft); }
@@ -1456,12 +1463,14 @@ function render(){
       <div class="titles">
         <div class="section-title">${escapeHtml(section.name)}</div>
         ${section.assignee?`<div class="section-assignee">担当: ${escapeHtml(section.assignee)}</div>`:``}
+        ${section.alert?`<div class="section-alert">⚠️ ${escapeHtml(section.alert)}</div>`:``}
       </div>
       <div class="section-meta">
         <span class="section-count" data-count></span>
         ${(readOnly || !isOpen) ? `` : `<button class="icon-btn" data-toggle-section="${section.id}" title="まとめてチェック" style="font-size:18px;">☑</button>`}
         ${(readOnly || !isOpen || !editMode) ? `` : `
           <button class="icon-btn" data-edit-assignee="${section.id}" title="担当を編集">${pencilSvg()}</button>
+          <button class="icon-btn" data-edit-alert="${section.id}" title="注意事項を編集" style="font-size:15px;">⚠️</button>
           <button class="icon-btn" data-move-section="${section.id}|up" title="上へ移動" ${idx===0?"disabled":""}>${upSvg()}</button>
           <button class="icon-btn" data-move-section="${section.id}|down" title="下へ移動" ${idx===sections.length-1?"disabled":""}>${downSvg()}</button>
           <button class="icon-btn" data-del-section="${section.id}" title="この場所を削除">${trashSvg()}</button>
@@ -1510,6 +1519,7 @@ function render(){
 
     card.appendChild(list);
     if(section.tasks.length>0 && sectionDone===section.tasks.length) card.classList.add("all-done");
+    if(section.alert) card.classList.add("has-alert");
     head.querySelector("[data-count]").textContent = section.tasks.length? `${sectionDone}/${section.tasks.length}`:"";
     main.appendChild(card);
   });
@@ -1591,6 +1601,25 @@ function render(){
       return sections;
     });
     render();
+  });
+});
+  main.querySelectorAll("[data-edit-alert]").forEach(el=>{
+  el.addEventListener("click", async (e)=>{
+    e.stopPropagation();
+    if(isHistoryMode()) return;
+    const sId=el.getAttribute("data-edit-alert");
+    const sec=structures[currentTab].find(s=>s.id===sId);
+    const val = prompt(`「${sec.name}」の注意事項を入力してください(病気の発生など。空にすると消えます)`, sec.alert||"");
+    if(val===null) return;
+    pushUndo(currentTab);
+    const newAlert = val.trim();
+    await transactStructure(currentTab, (sections)=>{
+      const s = sections.find(s=>s.id===sId);
+      if(s) s.alert = newAlert;
+      return sections;
+    });
+    render();
+    showToast(newAlert ? "注意事項を更新しました" : "注意事項を削除しました");
   });
 });
     main.querySelectorAll("[data-edit-task]").forEach(el=>{
