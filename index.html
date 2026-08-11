@@ -77,11 +77,11 @@
     padding:calc(9px + env(safe-area-inset-top)) 14px 6px 14px;
     box-shadow:0 2px 10px rgba(38,64,47,.25);
   }
-  .brand-row{
+    .brand-row{
     display:flex; align-items:center; justify-content:space-between;
-    gap:10px;
+    gap:8px;
   }
-  .brand{font-weight:900; font-size:15.5px; letter-spacing:.02em;}
+  .brand{font-weight:900; font-size:15.5px; letter-spacing:.02em; min-width:0;}
   .brand-sub{
   font-family: sans-serif;
   font-weight: 400;
@@ -90,10 +90,13 @@
   opacity: .75;
   margin-top: 1px;
   white-space: nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width:100%;
 }
   .date-pill{
-    font-size:11px; color:#e7f0e6; background:rgba(255,255,255,.08);
-    padding:4px 9px; border-radius:999px; white-space:nowrap;
+    font-size:10px; color:#e7f0e6; background:rgba(255,255,255,.08);
+    padding:3px 7px; border-radius:999px; white-space:nowrap; flex:0 0 auto;
   }
 
   nav.tabs{
@@ -215,6 +218,14 @@
   .icon-btn{width:34px; height:34px; border:none; background:none; display:flex; align-items:center; justify-content:center; color:#b9ab98; cursor:pointer; border-radius:8px; flex:0 0 auto;}
   .icon-btn:active{background:#f1ece0;}
   .icon-btn svg{width:16px; height:16px;}
+    .icon-btn{width:34px; height:34px; border:none; background:none; display:flex; align-items:center; justify-content:center; color:#b9ab98; cursor:pointer; border-radius:8px; flex:0 0 auto;}
+  .icon-btn:active{background:#f1ece0;}
+  .icon-btn svg{width:16px; height:16px;}
+  .move-stack{display:flex; flex-direction:column; width:24px; flex:0 0 auto; border-radius:8px; overflow:hidden;}
+  .move-stack button{width:24px; height:17px; border:none; background:none; color:#b9ab98; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0;}
+  .move-stack button svg{width:12px; height:12px;}
+  .move-stack button:active{background:#f1ece0;}
+  .move-stack button:disabled{opacity:.3;}
   .chev{width:18px; height:18px; transition:transform .2s ease, color .35s ease; color:var(--leaf-500); flex:0 0 auto;}
   .section-card.open .chev{transform:rotate(90deg);}
   .section-card.all-done{background:#f2f8f0; border-color:#cfe4c9;}
@@ -488,6 +499,10 @@ html[data-theme="dark"] .date-chip.active{ background:var(--surface-2); color:va
 html[data-theme="dark"] .mode-switch button.active{ background:var(--surface-2); color:var(--ink); }
 html[data-theme="dark"] .icon-btn{ color:#8d9a8f; }
 html[data-theme="dark"] .icon-btn:active{ background:var(--surface-2); }
+html[data-theme="dark"] .icon-btn{ color:#8d9a8f; }
+html[data-theme="dark"] .icon-btn:active{ background:var(--surface-2); }
+html[data-theme="dark"] .move-stack button{ color:#8d9a8f; }
+html[data-theme="dark"] .move-stack button:active{ background:var(--surface-2); }
 html[data-theme="dark"] .section-card.all-done{ background:var(--accent-soft); border-color:#2f4a36; }
 html[data-theme="dark"] .check{ border-color:#3c4a3e; background:var(--surface-2); }
 html[data-theme="dark"] .check svg{ color:#0f1512; }
@@ -544,9 +559,9 @@ html[data-theme="dark"] .cal-dow{ color:#c3cdc0; }
 /* 切り替えボタン */
 .theme-toggle{
   border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.08); color:#fff;
-  border-radius:999px; width:30px; height:30px; flex:0 0 auto;
+  border-radius:999px; width:26px; height:26px; flex:0 0 auto;
   display:flex; align-items:center; justify-content:center;
-  font-size:15px; line-height:1; cursor:pointer; padding:0; overflow:hidden;
+  font-size:13px; line-height:1; cursor:pointer; padding:0; overflow:hidden;
 }
 .theme-toggle:active{ background:rgba(255,255,255,.18); }
 .theme-toggle::before{ content:"🌙"; }
@@ -1465,14 +1480,16 @@ function render(){
         <div class="section-title">${escapeHtml(section.name)}${section.alert?`<span class="section-alert">⚠️ ${escapeHtml(section.alert)}</span>`:``}</div>
         ${section.assignee?`<div class="section-assignee">担当: ${escapeHtml(section.assignee)}</div>`:``}
       </div>
-      <div class="section-meta">
+            <div class="section-meta">
         <span class="section-count" data-count></span>
         ${(readOnly || !isOpen) ? `` : `<button class="icon-btn" data-toggle-section="${section.id}" title="まとめてチェック" style="font-size:18px;">☑</button>`}
         ${(readOnly || !isOpen || !editMode) ? `` : `
           <button class="icon-btn" data-edit-assignee="${section.id}" title="担当を編集">${pencilSvg()}</button>
           <button class="icon-btn" data-edit-alert="${section.id}" title="注意事項を編集" style="font-size:15px;">⚠️</button>
-          <button class="icon-btn" data-move-section="${section.id}|up" title="上へ移動" ${idx===0?"disabled":""}>${upSvg()}</button>
-          <button class="icon-btn" data-move-section="${section.id}|down" title="下へ移動" ${idx===sections.length-1?"disabled":""}>${downSvg()}</button>
+          <div class="move-stack">
+            <button data-move-section="${section.id}|up" title="上へ移動" ${idx===0?"disabled":""}>${upSvg()}</button>
+            <button data-move-section="${section.id}|down" title="下へ移動" ${idx===sections.length-1?"disabled":""}>${downSvg()}</button>
+          </div>
           <button class="icon-btn" data-del-section="${section.id}" title="この場所を削除">${trashSvg()}</button>
         `}
 
