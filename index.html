@@ -1500,10 +1500,7 @@ function render(){
         </div>` : ``}
       </div>` : ``}
     `;
-
-        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
-      </div>`;
-    head.addEventListener("click",(e)=>{
+         head.addEventListener("click",(e)=>{
       if(e.target.closest("button")) return;
       openSections[sectionKey]=!openSections[sectionKey];
       render();
