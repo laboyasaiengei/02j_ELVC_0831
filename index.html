@@ -199,13 +199,14 @@
     user-select:none;
   }
   .section-head .titles{display:flex; flex-direction:column; min-width:0;}
-  .section-title{font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:15.5px; color:var(--soil-800);}
+  .section-title{font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:15.5px; color:var(--soil-800); display:flex; align-items:center; gap:6px; flex-wrap:wrap;}
   .section-assignee{font-size:11.5px; color:var(--bark); margin-top:2px; font-weight:500;}
   .section-alert{
-    display:flex; align-items:flex-start; gap:5px;
-    font-size:11.5px; line-height:1.5; font-weight:600;
+    display:inline-flex; align-items:center; gap:4px;
+    font-family:"Inter","Noto Sans JP",sans-serif;
+    font-size:11px; line-height:1.4; font-weight:600;
     color:#7a4b12; background:#fff3e0; border:1px solid #f0c98a;
-    border-radius:8px; padding:5px 8px; margin-top:6px;
+    border-radius:999px; padding:2px 8px;
     white-space:pre-wrap; word-break:break-word;
   }
   .section-card.has-alert{border-color:var(--alert);}
@@ -1461,9 +1462,8 @@ function render(){
     head.className="section-head";
     head.innerHTML=`
       <div class="titles">
-        <div class="section-title">${escapeHtml(section.name)}</div>
+        <div class="section-title">${escapeHtml(section.name)}${section.alert?`<span class="section-alert">⚠️ ${escapeHtml(section.alert)}</span>`:``}</div>
         ${section.assignee?`<div class="section-assignee">担当: ${escapeHtml(section.assignee)}</div>`:``}
-        ${section.alert?`<div class="section-alert">⚠️ ${escapeHtml(section.alert)}</div>`:``}
       </div>
       <div class="section-meta">
         <span class="section-count" data-count></span>
