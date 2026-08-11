@@ -1485,13 +1485,15 @@ function render(){
       <div class="section-sub-row">
         <div class="section-assignee">${section.assignee?`担当: ${escapeHtml(section.assignee)}`:``}</div>
         ${(!readOnly && isOpen && editMode) ? `
-        <div class="section-edit-actions">
-          <button class="icon-btn" data-edit-assignee="${section.id}" title="担当を編集">${pencilSvg()}</button>
-          <button class="icon-btn" data-edit-alert="${section.id}" title="注意事項を編集" style="font-size:15px;">⚠️</button>
+                <div class="section-edit-actions">
           <div class="move-stack">
             <button data-move-section="${section.id}|up" title="上へ移動" ${idx===0?"disabled":""}>${upSvg()}</button>
             <button data-move-section="${section.id}|down" title="下へ移動" ${idx===sections.length-1?"disabled":""}>${downSvg()}</button>
           </div>
+          <button class="icon-btn" data-edit-assignee="${section.id}" title="担当を編集">${pencilSvg()}</button>
+          <button class="icon-btn" data-edit-alert="${section.id}" title="注意事項を編集" style="font-size:15px;">⚠️</button>
+          <button class="icon-btn" data-del-section="${section.id}" title="この場所を削除">${trashSvg()}</button>
+        </div>` : ``}
           <button class="icon-btn" data-del-section="${section.id}" title="この場所を削除">${trashSvg()}</button>
         </div>` : ``}
       </div>` : ``}
