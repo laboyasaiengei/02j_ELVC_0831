@@ -1013,7 +1013,7 @@ function shortDowLabel(dateStr){
 function getTaskDayRestriction(text){
   if(/最終日曜日のみ/.test(text)) return "lastSunday";
   if(/日曜日のみ/.test(text)) return "sunday";
-  if(/土曜のみ/.test(text)) return "saturday";
+  if(/土曜日のみ/.test(text)) return "saturday";
   return null;
 }
 function isLastSundayOfMonth(d){
