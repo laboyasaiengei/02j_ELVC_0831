@@ -1618,34 +1618,6 @@ function render(){
     main.appendChild(card);
   });
 
-    if(!readOnly && editMode){
-      const addRow=document.createElement("div");
-      addRow.className="add-row";
-      addRow.innerHTML=`
-        <input type="text" placeholder="タスクを追加" data-add-input="${section.id}" style="flex:1.6;">
-        <input type="text" placeholder="担当(任意)" data-add-assignee="${section.id}" style="flex:1;">
-        <button data-add-btn="${section.id}">追加</button>
-      `;
-      list.appendChild(addRow);
-
-      const addRowSync=document.createElement("div");
-      addRowSync.className="add-row-sync";
-      addRowSync.innerHTML = otherTabsOf(currentTab).map(t=>`
-        <label class="sync-check">
-          <input type="checkbox" data-add-sync="${section.id}|${t}">
-          ${TAB_LABELS[t]}にも追加
-        </label>
-      `).join("");
-      list.appendChild(addRowSync);
-    }
-
-    card.appendChild(list);
-    if(section.tasks.length>0 && sectionDone===section.tasks.length) card.classList.add("all-done");
-    if(section.alert) card.classList.add("has-alert");
-    head.querySelector("[data-count]").textContent = section.tasks.length? `${sectionDone}/${section.tasks.length}`:"";
-    main.appendChild(card);
-  });
-
   if(sections.length===0){
     const note=document.createElement("div");
     note.className="empty-note";
