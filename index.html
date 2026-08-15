@@ -247,6 +247,11 @@
   .check:active{transform:scale(.9);}
   .check.readonly{cursor:default;}
   .check.readonly:active{transform:none;}
+  .check.day-inactive{ cursor:not-allowed; opacity:.35; }
+  .check.day-inactive:active{transform:none;}
+  .task-row.day-inactive .task-text{ color:#9aa79a; }
+  .task-row.day-inactive .task-assignee{ color:#c9c2b5; }
+
   .task-text{font-size:14.5px; line-height:1.55; padding-top:2px; word-break:break-word;}
   .task-main{flex:1; min-width:0;}
   .task-assignee{font-size:11px; color:var(--bark); margin-top:3px; font-weight:600;}
@@ -1004,6 +1009,27 @@ function shortDowLabel(dateStr){
   const d = parseDateStr(dateStr);
   return { md:(d.getMonth()+1)+"/"+d.getDate(), dow:days[d.getDay()] };
 }
+/* ---------- 曜日限定タスクの判定 ---------- */
+function getTaskDayRestriction(text){
+  if(/最終日曜日のみ/.test(text)) return "lastSunday";
+  if(/日曜日のみ/.test(text)) return "sunday";
+  if(/土曜のみ/.test(text)) return "saturday";
+  return null;
+}
+function isLastSundayOfMonth(d){
+  const next = new Date(d.getFullYear(), d.getMonth(), d.getDate()+7);
+  return d.getDay()===0 && next.getMonth()!==d.getMonth();
+}
+function isTaskActiveToday(text){
+  const restriction = getTaskDayRestriction(text);
+  if(!restriction) return true;
+  const today = new Date();
+  if(restriction==="sunday") return today.getDay()===0;
+  if(restriction==="saturday") return today.getDay()===6;
+  if(restriction==="lastSunday") return isLastSundayOfMonth(today);
+  return true;
+}
+
 /* 直近N日分の日付文字列を新しい順(今日が先頭)で返す */
 function getLastNDays(n){
   const arr=[];
@@ -1134,7 +1160,10 @@ function backupsCol(tab){ return db.collection("backups_"+tab); }
 function countStats(tab, checks){
   const sections = structures[tab] || [];
   let total=0, done=0;
-  sections.forEach(s=>s.tasks.forEach(t=>{ total++; if(checks[t.id]) done++; }));
+  sections.forEach(s=>s.tasks.forEach(t=>{
+    if(!isTaskActiveToday(t.text)) return;
+    total++; if(checks[t.id]) done++;
+  }));
   return { total, done };
 }
 
@@ -1495,10 +1524,11 @@ function render(){
   const sections = structures[currentTab] || [];
   let totalTasks=0, doneTasks=0;
 
-  sections.forEach((section, idx)=>{
+    sections.forEach((section, idx)=>{
     const sectionKey = currentTab+":"+section.id;
     const isOpen = !!openSections[sectionKey];
     let sectionDone=0;
+    const activeTaskCount = section.tasks.filter(t=>isTaskActiveToday(t.text)).length;
 
     const card=document.createElement("div");
     card.className="section-card"+(isOpen?" open":"")+(readOnly?" readonly":"");
@@ -1540,13 +1570,16 @@ function render(){
     list.className="task-list";
 
     section.tasks.forEach((task)=>{
-      totalTasks++;
+      const dayActive = isTaskActiveToday(task.text);
       const isChecked=!!checkedMap[task.id];
-      if(isChecked){doneTasks++; sectionDone++;}
+      if(dayActive){
+        totalTasks++;
+        if(isChecked){doneTasks++; sectionDone++;}
+      }
       const row=document.createElement("div");
-      row.className="task-row";
+      row.className="task-row"+(dayActive?"":" day-inactive");
       row.innerHTML=`
-        <div class="check ${isChecked?"checked":""}${readOnly?" readonly":""}" data-id="${task.id}">${checkSvg()}</div>
+        <div class="check ${isChecked?"checked":""}${readOnly?" readonly":""}${dayActive?"":" day-inactive"}" data-id="${task.id}"${dayActive?"":' data-day-inactive="1"'}>${checkSvg()}</div>
         <div class="task-main">
           <div class="task-text ${isChecked?"checked":""}">${linkify(task.text)}</div>
                                         ${task.assignee ? `<div class="task-assignee">担当: ${escapeHtml(task.assignee)}</div>` : ``}
@@ -1556,6 +1589,34 @@ function render(){
       `;
       list.appendChild(row);
     });
+
+    if(!readOnly && editMode){
+      const addRow=document.createElement("div");
+      addRow.className="add-row";
+      addRow.innerHTML=`
+        <input type="text" placeholder="タスクを追加" data-add-input="${section.id}" style="flex:1.6;">
+        <input type="text" placeholder="担当(任意)" data-add-assignee="${section.id}" style="flex:1;">
+        <button data-add-btn="${section.id}">追加</button>
+      `;
+      list.appendChild(addRow);
+
+      const addRowSync=document.createElement("div");
+      addRowSync.className="add-row-sync";
+      addRowSync.innerHTML = otherTabsOf(currentTab).map(t=>`
+        <label class="sync-check">
+          <input type="checkbox" data-add-sync="${section.id}|${t}">
+          ${TAB_LABELS[t]}にも追加
+        </label>
+      `).join("");
+      list.appendChild(addRowSync);
+    }
+
+    card.appendChild(list);
+    if(activeTaskCount>0 && sectionDone===activeTaskCount) card.classList.add("all-done");
+    if(section.alert) card.classList.add("has-alert");
+    head.querySelector("[data-count]").textContent = activeTaskCount? `${sectionDone}/${activeTaskCount}`:"";
+    main.appendChild(card);
+  });
 
     if(!readOnly && editMode){
       const addRow=document.createElement("div");
@@ -1633,9 +1694,13 @@ function render(){
   }
 
   // bindings
-  main.querySelectorAll("[data-id]").forEach(el=>{
+    main.querySelectorAll("[data-id]").forEach(el=>{
   el.addEventListener("click", async ()=>{
     if(isHistoryMode()) return;
+    if(el.getAttribute("data-day-inactive")==="1"){
+      showToast("本日は対象外の曜日のタスクです");
+      return;
+    }
     const id=el.getAttribute("data-id");
     pushUndo(currentTab);
     await transactChecks(currentTab, (checks)=>{
@@ -1646,6 +1711,7 @@ function render(){
     render();
   });
 });
+
   main.querySelectorAll("[data-edit-assignee]").forEach(el=>{
   el.addEventListener("click", async (e)=>{
     e.stopPropagation();
