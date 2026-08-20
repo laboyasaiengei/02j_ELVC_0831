@@ -994,6 +994,14 @@ const INITIAL_DATA = {
 const TAB_ORDER = ["asa","hiru","yugata"];
 const TAB_LABELS = { asa:"朝", hiru:"昼", yugata:"夕" };
 function otherTabsOf(tab){ return TAB_ORDER.filter(t=>t!==tab); }
+// 他タブとの連動(追加コピー/編集/削除)で「同じタスク」とみなす条件。
+// 場所(セクション)は名前で対応付けるが、タスク本文だけで判定すると、同じ場所に
+// 担当者違いで文言が完全一致するタスクが複数あった場合に誤って連動してしまうため、
+// タスクごとの担当者名も一致することを条件に加える。
+function isSameTask(a,b){
+  if(!a || !b) return false;
+  return a.text===b.text && (a.assignee||"")===(b.assignee||"");
+}
 function pad(n){ return n<10 ? "0"+n : ""+n; }
 function genId(prefix){ return prefix+"_"+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function formatDateStr(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
@@ -1728,22 +1736,64 @@ function render(){
     const [sId,tId]=el.getAttribute("data-edit-task").split("|");
     const sec=structures[currentTab].find(s=>s.id===sId);
     const task=sec.tasks.find(t=>t.id===tId);
+    const originalText = task.text;
+    const originalAssignee = task.assignee||"";
     const newText = prompt("タスクの内容を編集してください", task.text||"");
     if(newText===null) return;
     if(!newText.trim()){ showToast("タスクの内容を入力してください"); return; }
     const newAssigneeVal = prompt("担当者名を編集してください(空にすると無記名になります)", task.assignee||"");
     if(newAssigneeVal===null) return;
-    pushUndo(currentTab);
     const finalText = newText.trim();
     const finalAssignee = newAssigneeVal.trim();
-    await transactStructure(currentTab, (sections)=>{
-      const s = sections.find(s=>s.id===sId);
-      const t = s ? s.tasks.find(t=>t.id===tId) : null;
-      if(t){ t.text = finalText; t.assignee = finalAssignee; }
-      return sections;
+
+    const applyEditToCurrent = async ()=>{
+      pushUndo(currentTab);
+      await transactStructure(currentTab, (sections)=>{
+        const s = sections.find(s=>s.id===sId);
+        const t = s ? s.tasks.find(t=>t.id===tId) : null;
+        if(t){ t.text = finalText; t.assignee = finalAssignee; }
+        return sections;
+      });
+    };
+
+    // 他タブに同じ場所名・同じ(編集前の)内容+担当者のタスクがあれば、連動編集の候補として確認する
+    let matches=[];
+    if(sec && task && firebaseReady){
+      for(const t of otherTabsOf(currentTab)){
+        try{
+          const snap = await structureRef(t).get();
+          const sections = (snap.exists && snap.data() && snap.data().sections) ? snap.data().sections : [];
+          const s2 = sections.find(s=>s.name===sec.name);
+          if(s2 && s2.tasks.some(tk=>isSameTask(tk, {text:originalText, assignee:originalAssignee}))) matches.push(t);
+        }catch(err){ /* 確認できなければ現在のタブのみ更新する */ }
+      }
+    }
+
+    if(matches.length===0){
+      await applyEditToCurrent();
+      render();
+      showToast("タスクを更新しました");
+      return;
+    }
+
+    openTaskSyncModal(matches, async (selectedTabs)=>{
+      await applyEditToCurrent();
+      for(const t of selectedTabs){
+        await transactStructure(t, (sections)=>{
+          const s2 = sections.find(s=>s.name===sec.name);
+          const t2 = s2 ? s2.tasks.find(tk=>isSameTask(tk, {text:originalText, assignee:originalAssignee})) : null;
+          if(t2){ t2.text = finalText; t2.assignee = finalAssignee; }
+          return sections;
+        });
+      }
+      render();
+      showToast(selectedTabs.length ? `更新しました（${selectedTabs.map(t=>TAB_LABELS[t]).join("・")}にも反映）` : "タスクを更新しました");
+    }, {
+      title: "他の時間帯にも同じ変更を反映しますか？",
+      sub: "同じ内容のタスクが見つかりました。合わせて変更するものを選んでください",
+      confirmLabel: "反映する",
+      checkboxSuffix: "にも反映する"
     });
-    render();
-    showToast("タスクを更新しました");
   });
 });
 
@@ -1801,7 +1851,7 @@ function render(){
       await saveChecks(currentTab);
     };
 
-    // 他タブに同じ場所名・同じ内容のタスクがあれば、連動削除の候補として確認する
+    // 他タブに同じ場所名・同じ内容+担当者のタスクがあれば、連動削除の候補として確認する
     let matches=[];
     if(sourceSec && task && firebaseReady){
       for(const t of otherTabsOf(currentTab)){
@@ -1809,7 +1859,7 @@ function render(){
           const snap = await structureRef(t).get();
           const sections = (snap.exists && snap.data() && snap.data().sections) ? snap.data().sections : [];
           const sec = sections.find(s=>s.name===sourceSec.name);
-          if(sec && sec.tasks.some(tk=>tk.text===task.text)) matches.push(t);
+          if(sec && sec.tasks.some(tk=>isSameTask(tk, task))) matches.push(t);
         }catch(err){ /* 確認できなければ通常削除のみ行う */ }
       }
     }
@@ -1825,7 +1875,7 @@ function render(){
       for(const t of selectedTabs){
         await transactStructure(t, (sections)=>{
           const sec = sections.find(s=>s.name===sourceSec.name);
-          if(sec) sec.tasks = sec.tasks.filter(tk=>tk.text!==task.text);
+          if(sec) sec.tasks = sec.tasks.filter(tk=>!isSameTask(tk, task));
           return sections;
         });
       }
@@ -1864,7 +1914,6 @@ function render(){
     if(!val) return;
     const assigneeVal = assigneeInput ? assigneeInput.value.trim() : "";
     const sourceSec = (structures[currentTab]||[]).find(s=>s.id===sId);
-    const sectionName = sourceSec ? sourceSec.name : "";
     const syncBoxes = Array.from(main.querySelectorAll(`[data-add-sync^="${sId}|"]`)).filter(cb=>cb.checked);
     pushUndo(currentTab);
     const newTask = { id:genId("t"), text:val, assignee: assigneeVal };
@@ -1878,9 +1927,9 @@ function render(){
       const targetTab = cb.getAttribute("data-add-sync").split("|")[1];
       let result="skipped";
       await transactStructure(targetTab, (sections)=>{
-        const sec = sections.find(s=>s.name===sectionName);
+        const sec = sections.find(s=>s.name===sourceSec.name);
         if(!sec) return sections;
-        if(sec.tasks.some(t=>t.text===val)){ result="dup"; return sections; }
+        if(sec.tasks.some(t=>isSameTask(t, newTask))){ result="dup"; return sections; }
         sec.tasks.push({ id:genId("t"), text:val, assignee:assigneeVal });
         result="copied";
         return sections;
@@ -3274,12 +3323,22 @@ document.getElementById("closeSpecialDateModal").addEventListener("click", ()=>{
 
 /* ---------- 他タブへのタスク連動削除（クルクル対策で使ったモーダルと同じ仕組みを流用） ---------- */
 let taskSyncCallback = null;
-function openTaskSyncModal(tabs, onConfirm){
+function openTaskSyncModal(tabs, onConfirm, opts){
+  // opts未指定時は従来通り「連動削除」の文言で動作する(呼び出し側の互換性を維持)
+  const o = Object.assign({
+    title: "他の時間帯からも削除しますか？",
+    sub: "同じ内容のタスクが見つかりました。合わせて削除するものを選んでください",
+    confirmLabel: "削除する",
+    checkboxSuffix: "からも削除する"
+  }, opts||{});
+  document.getElementById("taskSyncTitle").textContent = o.title;
+  document.getElementById("taskSyncSub").textContent = o.sub;
+  document.getElementById("taskSyncConfirm").textContent = o.confirmLabel;
   const listEl = document.getElementById("taskSyncList");
   listEl.innerHTML = tabs.map(t=>`
     <label class="sync-check">
       <input type="checkbox" data-sync-tab="${t}">
-      ${TAB_LABELS[t]}からも削除する
+      ${TAB_LABELS[t]}${o.checkboxSuffix}
     </label>
   `).join("");
   taskSyncCallback = onConfirm;
