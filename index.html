@@ -1813,15 +1813,15 @@ function render(){
     render();
   });
 });
-    main.querySelectorAll("[data-toggle-section]").forEach(el=>{
+        main.querySelectorAll("[data-toggle-section]").forEach(el=>{
   el.addEventListener("click", async (e)=>{
     e.stopPropagation();
     if(isHistoryMode()) return;
     const sId=el.getAttribute("data-toggle-section");
     const sec=structures[currentTab].find(s=>s.id===sId);
-    if(sec.tasks.length===0) return;
+    const taskIds = sec.tasks.filter(t=>isTaskActiveToday(t.text)).map(t=>t.id);
+    if(taskIds.length===0) return;
     pushUndo(currentTab);
-    const taskIds = sec.tasks.map(t=>t.id);
     await transactChecks(currentTab, (checks)=>{
       const allDone = taskIds.every(tId=>checks[tId]);
       taskIds.forEach(tId=>{ checks[tId] = !allDone; });
@@ -1831,6 +1831,7 @@ function render(){
     render();
   });
 });
+
   main.querySelectorAll("[data-remove-task]").forEach(el=>{
   el.addEventListener("click", async (e)=>{
     e.stopPropagation();
