@@ -1607,16 +1607,6 @@ function render(){
         <button data-add-btn="${section.id}">追加</button>
       `;
       list.appendChild(addRow);
-
-      const addRowSync=document.createElement("div");
-      addRowSync.className="add-row-sync";
-      addRowSync.innerHTML = otherTabsOf(currentTab).map(t=>`
-        <label class="sync-check">
-          <input type="checkbox" data-add-sync="${section.id}|${t}">
-          ${TAB_LABELS[t]}にも追加
-        </label>
-      `).join("");
-      list.appendChild(addRowSync);
     }
 
     card.appendChild(list);
@@ -1813,7 +1803,7 @@ function render(){
     render();
   });
 });
-        main.querySelectorAll("[data-toggle-section]").forEach(el=>{
+    main.querySelectorAll("[data-toggle-section]").forEach(el=>{
   el.addEventListener("click", async (e)=>{
     e.stopPropagation();
     if(isHistoryMode()) return;
@@ -1831,7 +1821,6 @@ function render(){
     render();
   });
 });
-
   main.querySelectorAll("[data-remove-task]").forEach(el=>{
   el.addEventListener("click", async (e)=>{
     e.stopPropagation();
@@ -1915,34 +1904,50 @@ function render(){
     if(!val) return;
     const assigneeVal = assigneeInput ? assigneeInput.value.trim() : "";
     const sourceSec = (structures[currentTab]||[]).find(s=>s.id===sId);
-    const syncBoxes = Array.from(main.querySelectorAll(`[data-add-sync^="${sId}|"]`)).filter(cb=>cb.checked);
-    pushUndo(currentTab);
-    const newTask = { id:genId("t"), text:val, assignee: assigneeVal };
-    await transactStructure(currentTab, (sections)=>{
-      const sec = sections.find(s=>s.id===sId);
-      if(sec) sec.tasks.push(newTask);
-      return sections;
-    });
-    let copied=[], skipped=[];
-    for(const cb of syncBoxes){
-      const targetTab = cb.getAttribute("data-add-sync").split("|")[1];
-      let result="skipped";
-      await transactStructure(targetTab, (sections)=>{
-        const sec = sections.find(s=>s.name===sourceSec.name);
-        if(!sec) return sections;
-        if(sec.tasks.some(t=>isSameTask(t, newTask))){ result="dup"; return sections; }
-        sec.tasks.push({ id:genId("t"), text:val, assignee:assigneeVal });
-        result="copied";
+
+    const doAdd = async (targetTabs)=>{
+      pushUndo(currentTab);
+      const newTask = { id:genId("t"), text:val, assignee: assigneeVal };
+      await transactStructure(currentTab, (sections)=>{
+        const sec = sections.find(s=>s.id===sId);
+        if(sec) sec.tasks.push(newTask);
         return sections;
       });
-      if(result==="copied") copied.push(TAB_LABELS[targetTab]);
-      else skipped.push(TAB_LABELS[targetTab]);
+      let copied=[], skipped=[];
+      for(const targetTab of targetTabs){
+        let result="skipped";
+        await transactStructure(targetTab, (sections)=>{
+          const sec = sections.find(s=>s.name===sourceSec.name);
+          if(!sec) return sections;
+          if(sec.tasks.some(t=>isSameTask(t, newTask))){ result="dup"; return sections; }
+          sec.tasks.push({ id:genId("t"), text:val, assignee:assigneeVal });
+          result="copied";
+          return sections;
+        });
+        if(result==="copied") copied.push(TAB_LABELS[targetTab]);
+        else skipped.push(TAB_LABELS[targetTab]);
+      }
+      render();
+      let msg = "タスクを追加しました";
+      if(copied.length) msg += `（${copied.join("・")}にもコピー）`;
+      if(skipped.length) msg += `（${skipped.join("・")}は同名の場所がないかすでに同じ内容があるためスキップ）`;
+      showToast(msg);
+    };
+
+    const others = otherTabsOf(currentTab);
+    if(others.length===0){
+      await doAdd([]);
+      return;
     }
-    render();
-    let msg = "タスクを追加しました";
-    if(copied.length) msg += `（${copied.join("・")}にもコピー）`;
-    if(skipped.length) msg += `（${skipped.join("・")}は同名の場所がないかすでに同じ内容があるためスキップ）`;
-    showToast(msg);
+
+    openTaskSyncModal(others, async (selectedTabs)=>{
+      await doAdd(selectedTabs);
+    }, {
+      title: "他の時間帯にも追加しますか？",
+      sub: "追加するタスクを他の時間帯にもコピーする場合は選んでください",
+      confirmLabel: "追加する",
+      checkboxSuffix: "にも追加する"
+    });
   });
 });
   main.querySelectorAll("[data-add-input], [data-add-assignee]").forEach(input=>{
