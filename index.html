@@ -228,6 +228,13 @@
   .section-card.open .chev{transform:rotate(90deg);}
   .section-card.all-done{background:#f2f8f0; border-color:#cfe4c9;}
   .section-card.all-done .section-title{color:var(--leaf-600);}
+  .section-card.no-tasks{ opacity:.55; border-style:dashed; }
+  .section-card.no-tasks .section-title{ color:var(--ink-soft); }
+  .section-card.no-tasks .chev{ color:#c9c2b5; }
+  .section-count.is-empty{
+    background:var(--line); color:var(--ink-soft);
+    border-radius:999px; padding:2px 8px; font-weight:700;
+  }
 
   .task-list{max-height:0; overflow:hidden; transition:max-height .25s ease;}
   .section-card.open .task-list{max-height:2400px;}
@@ -561,6 +568,9 @@ html[data-theme="dark"] .icon-btn:active{ background:var(--surface-2); }
 html[data-theme="dark"] .move-stack button{ color:#8d9a8f; }
 html[data-theme="dark"] .move-stack button:active{ background:var(--surface-2); }
 html[data-theme="dark"] .section-card.all-done{ background:var(--accent-soft); border-color:#2f4a36; }
+html[data-theme="dark"] .section-card.no-tasks{ border-color:#3c4a3e; }
+html[data-theme="dark"] .section-card.no-tasks .chev{ color:#5c655e; }
+html[data-theme="dark"] .section-count.is-empty{ background:var(--surface-2); color:#8d9a8f; }
 html[data-theme="dark"] .check{ border-color:#3c4a3e; background:var(--surface-2); }
 html[data-theme="dark"] .check svg{ color:#0f1512; }
 html[data-theme="dark"] .task-text.checked ~ .task-assignee,
@@ -661,8 +671,6 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
       <button data-tab="yugata">夕管理</button>
     </nav>
 
-    <div class="date-select" id="dateSelect"></div>
-
     <div class="sprout-wrap">
             <svg class="sprout-svg" id="sprout" width="42" height="42" viewBox="0 0 42 42"></svg>
       <div class="progress-text">
@@ -672,7 +680,8 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
       </div>
     </div>
 
-    <div class="top-actions">
+        <div class="top-actions">
+      <button class="foot-btn" id="dateRefBtn">🔍 参照</button>
       <button class="foot-btn" id="undoBtn" disabled>↩ 取消</button>
       <button class="foot-btn" id="backupBtn">💾 保存</button>
       <button class="foot-btn" id="restoreBtn">📂 復元</button>
@@ -710,7 +719,17 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
   </div>
 </div>
 
+<div class="modal-overlay" id="dateRefModal">
+  <div class="modal-sheet">
+    <div class="modal-title">過去の記録を見る</div>
+    <div class="modal-sub">見たい日をタップしてください</div>
+    <div id="dateRefList"></div>
+    <button class="modal-close" id="closeDateRefModal">閉じる</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="restorePasscodeModal">
+
   <div class="modal-sheet">
     <div class="modal-title">復元用パスコード</div>
     <div class="modal-sub" id="restorePasscodeSub">復元するには4桁のパスコードを入力してください</div>
@@ -1356,6 +1375,26 @@ async function saveChecks(tab){
     connErrFail("本日のチェック状態の保存", e);
   }
 }
+
+/* ---------- 記録シート記入と連動したタスクの自動チェック ---------- */
+async function autoCheckLinkedTask(tab, sectionName, matchFn){
+  try{
+    const sections = structures[tab] || [];
+    const sec = sections.find(s=>s.name===sectionName);
+    if(!sec) return;
+    const task = sec.tasks.find(t=>matchFn(t.text));
+    if(!task) return;
+    await transactChecks(tab, (checks)=>{
+      checks[task.id] = true;
+      return checks;
+    });
+    if(currentTab===tab){
+      checkedMap = todayChecked;
+      render();
+    }
+  }catch(e){ /* 自動チェックの失敗は記録の保存自体を妨げないため無視 */ }
+}
+
 function showConfigWarningOnce(){
   if(showConfigWarningOnce._shown) return;
   showConfigWarningOnce._shown = true;
@@ -1438,11 +1477,9 @@ function subscribeChecks(tab){
     if(snap.metadata.hasPendingWrites) return;
     todayChecked = (snap.exists && snap.data() && snap.data().data) ? snap.data().data : {};
     dateStats[todayStr] = (snap.exists && snap.data() && snap.data().stats) ? snap.data().stats : countStats(tab, todayChecked);
-    if(tab===currentTab && !isHistoryMode()){
+        if(tab===currentTab && !isHistoryMode()){
       checkedMap = todayChecked;
       render();
-    }else if(tab===currentTab){
-      renderDateChips(); // 履歴閲覧中でも今日チップのバッジだけ更新
     }
   }, (err)=>{
     flashConnError("リアルタイム同期でエラーが発生しました");
@@ -1543,35 +1580,10 @@ async function selectDate(day){
   render();
 }
 
-/* ---------- 日付選択チップの描画 ---------- */
-function renderDateChips(){
-  const wrap = document.getElementById("dateSelect");
-  wrap.innerHTML = "";
-  const days = getLastNDays(HISTORY_DAYS).filter(isDutyDate);
-  days.forEach(day=>{
-    const { md, dow } = shortDowLabel(day);
-    const stats = dateStats[day];
-    const chip = document.createElement("div");
-    chip.className = "date-chip"
-      + (day===viewDate ? " active" : "")
-      + (stats && stats.total>0 ? " has-data" : "");
-    chip.innerHTML = `
-      <div class="dow">${md}(${dow})</div>
-      ${stats ? `<div class="badge">${stats.done}/${stats.total}</div>` : `<div class="badge">-</div>`}
-      ${day===todayStr ? `<div class="today-tag">今日</div>` : ``}
-    `;
-    chip.addEventListener("click", ()=>selectDate(day));
-    wrap.appendChild(chip);
-  });
-}
-
 /* ---------- render ---------- */
 function render(){
-  renderDateChips();
-
   const main = document.getElementById("main");
   main.innerHTML = "";
-
   if(isConfigPlaceholder()){
     showConfigBanner();
   }
@@ -1611,8 +1623,8 @@ function render(){
     let sectionDone=0;
     const activeTaskCount = section.tasks.filter(t=>isTaskActiveToday(t.text)).length;
 
-    const card=document.createElement("div");
-    card.className="section-card"+(isOpen?" open":"")+(readOnly?" readonly":"");
+        const card=document.createElement("div");
+    card.className="section-card"+(isOpen?" open":"")+(readOnly?" readonly":"")+(activeTaskCount>0?"":" no-tasks");
 
     const head=document.createElement("div");
     head.className="section-head";
@@ -1700,7 +1712,15 @@ function render(){
     card.appendChild(list);
     if(activeTaskCount>0 && sectionDone===activeTaskCount) card.classList.add("all-done");
     if(section.alert) card.classList.add("has-alert");
-    head.querySelector("[data-count]").textContent = activeTaskCount? `${sectionDone}/${activeTaskCount}`:"";
+        const countEl = head.querySelector("[data-count]");
+    if(activeTaskCount){
+      countEl.textContent = `${sectionDone}/${activeTaskCount}`;
+      countEl.classList.remove("is-empty");
+    }else{
+      countEl.textContent = "タスクなし";
+      countEl.classList.add("is-empty");
+    }
+
     main.appendChild(card);
   });
 
@@ -2232,6 +2252,31 @@ function renderBackupPreview(payload){
     }
   });
 }
+function openDateRefModal(){
+  const listEl = document.getElementById("dateRefList");
+  const days = getLastNDays(HISTORY_DAYS).filter(isDutyDate);
+  if(days.length===0){
+    listEl.innerHTML = `<div class="empty-note">表示できる過去の記録がありません</div>`;
+  }else{
+    listEl.innerHTML = "";
+    days.forEach(day=>{
+      const { md, dow } = shortDowLabel(day);
+      const stats = dateStats[day];
+      const item=document.createElement("div");
+      item.className="backup-item";
+      const statusText = stats ? `完了 ${stats.done}/${stats.total}` : "記録なし";
+      item.innerHTML = `<div class="info">${md}(${dow})${day===todayStr?" ・今日":""}<small>${statusText}</small></div><button data-ref-date="${day}">表示</button>`;
+      listEl.appendChild(item);
+    });
+    listEl.querySelectorAll("[data-ref-date]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        selectDate(btn.getAttribute("data-ref-date"));
+        document.getElementById("dateRefModal").classList.remove("show");
+      });
+    });
+  }
+  document.getElementById("dateRefModal").classList.add("show");
+}
 
 /* ---------- events ---------- */
 document.getElementById("tabNav").addEventListener("click", async (e)=>{
@@ -2250,6 +2295,12 @@ document.getElementById("undoBtn").addEventListener("click", ()=>{
 document.getElementById("backupBtn").addEventListener("click", ()=>createBackup(false));
 document.getElementById("restoreBtn").addEventListener("click", ()=>{
   openRestorePasscodeModal(()=> openRestoreModal());
+});
+document.getElementById("dateRefBtn").addEventListener("click", ()=>{
+  openDateRefModal();
+});
+document.getElementById("closeDateRefModal").addEventListener("click", ()=>{
+  document.getElementById("dateRefModal").classList.remove("show");
 });
 document.getElementById("editModeBtn").addEventListener("click", ()=>{
   editMode = !editMode;
@@ -3749,6 +3800,7 @@ async function saveKanribo(){
   try{
     await kanriboCol().doc(getTodayStr()).set(data, { merge:true });
     showToast("管理簿を保存しました");
+    autoCheckLinkedTask("asa", "苗テラス", t=>t.includes("管理簿記入"));
     pruneOldLogs(kanriboCol());
     loadKanriboHistory();
   }catch(e){
@@ -3789,7 +3841,7 @@ function renderKanriboHistoryPage(){
       <div class="lh-date">${md}(${dow})</div>
       <div class="lh-body">
         <span class="lh-recorder">${escapeHtml(r.recorder||"-")}</span>
-        温度: ${escapeHtml(r.tempSet||"-")}→${escapeHtml(r.tempCur||"-")}℃／CO2: ${escapeHtml(r.co2Set||"-")}→${escapeHtml(r.co2Cur||"-")}ppm／一次圧: ${escapeHtml(r.pressure1||"-")}／二次圧: ${escapeHtml(r.pressure2||"-")}
+                温度: ${escapeHtml(r.tempSet||"-")}:${escapeHtml(r.tempCur||"-")}℃／CO2: ${escapeHtml(r.co2Set||"-")}:${escapeHtml(r.co2Cur||"-")}ppm／一次圧: ${escapeHtml(r.pressure1||"-")}／二次圧: ${escapeHtml(r.pressure2||"-")}
       </div>
     </div>`;
   }).join("");
@@ -3872,6 +3924,7 @@ async function saveBaiyoeki(){
   try{
     await baiyoekiCol().doc(getTodayStr()).set(data, { merge:true });
     showToast("培養液記録シートを保存しました");
+    autoCheckLinkedTask("hiru", "苗テラス", t=>t.includes("培養液pH") && t.includes("EC測定"));
     pruneOldLogs(baiyoekiCol());
     loadBaiyoekiHistory();
   }catch(e){
