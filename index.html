@@ -289,6 +289,44 @@
   .sync-modal-actions .primary{ background:var(--leaf-600); color:#fff; flex:1; }
   .sync-modal-actions .cancel{ background:#efece2; color:var(--ink-soft); }
 
+  /* ---- 苗テラス 記録シート（管理簿 / 培養液記録） ---- */
+  .record-entry-row{ padding:9px 14px 14px; border-top:1px solid var(--line); }
+  .record-entry-btn{
+    width:100%; border:none; background:var(--leaf-100); color:var(--leaf-600);
+    border-radius:12px; padding:11px; font-size:13px; font-weight:700; cursor:pointer;
+    font-family:"Zen Maru Gothic",sans-serif; display:flex; align-items:center; justify-content:center; gap:6px;
+  }
+  .record-entry-btn:active{ background:#cfe4c9; }
+  .log-date-banner{
+    background:var(--leaf-100); color:var(--leaf-600); border-radius:10px; padding:9px 12px;
+    font-size:13px; font-weight:700; margin-bottom:12px; text-align:center;
+    font-family:"Zen Maru Gothic",sans-serif;
+  }
+  .log-disabled-note{
+    background:#f3ede0; color:var(--bark); border-radius:10px; padding:11px 12px; font-size:12.5px; margin-bottom:16px; line-height:1.5;
+  }
+  .log-form{ display:flex; flex-direction:column; gap:10px; margin-bottom:18px; }
+  .log-field{ display:flex; flex-direction:column; gap:4px; }
+  .log-field label{ font-size:11.5px; color:var(--ink-soft); font-weight:600; }
+  .log-field input{
+    border:1px solid var(--line); border-radius:10px; padding:10px 11px;
+    font-size:16px; font-family:"Noto Sans JP",sans-serif; background:#fff; min-width:0;
+  }
+  .log-field-pair{ display:flex; gap:8px; }
+  .log-field-pair .log-field{ flex:1; min-width:0; }
+  .log-save-btn{
+    width:100%; border:none; background:var(--leaf-600); color:#fff; border-radius:12px;
+    padding:12px; font-size:14px; font-weight:700; cursor:pointer; margin-top:2px;
+    font-family:"Zen Maru Gothic",sans-serif;
+  }
+  .log-section-title{ font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:13.5px; color:var(--soil-800); margin:4px 0 8px; }
+  .log-history-row{
+    display:flex; align-items:flex-start; gap:8px; padding:9px 2px; border-bottom:1px solid var(--line); font-size:12px;
+  }
+  .log-history-row .lh-date{ font-weight:700; color:var(--soil-800); width:54px; flex:0 0 auto; padding-top:1px; }
+  .log-history-row .lh-body{ flex:1; color:var(--ink-soft); min-width:0; line-height:1.6; }
+  .log-history-row .lh-recorder{ display:block; color:var(--ink); font-weight:700; margin-bottom:1px; }
+
   .add-section-card{
     border:2px dashed #cdbfa0; border-radius:16px; padding:14px; margin-bottom:12px;
     background:transparent;
@@ -557,6 +595,10 @@ html[data-theme="dark"] .pref-priority{ background:var(--surface-2); }
 html[data-theme="dark"] .score-table th{ background:var(--surface-2); }
 html[data-theme="dark"] .cal-cell.duty{ background:var(--warn-bg); border-color:var(--warn-border); }
 html[data-theme="dark"] .special-date-row button{ color:#7c8579; }
+html[data-theme="dark"] .record-entry-btn{ background:var(--accent-soft); color:#a6d6ab; }
+html[data-theme="dark"] .log-field input{ background:var(--surface-2); border-color:var(--line); color:var(--ink); }
+html[data-theme="dark"] .log-date-banner{ background:var(--accent-soft); color:#a6d6ab; }
+html[data-theme="dark"] .log-disabled-note{ background:var(--warn-bg); color:var(--warn-text); }
 .diff-added{ background:#e3f7d8; border-left:4px solid #4caf50; padding:6px 8px; border-radius:6px; margin-bottom:6px; }
 .diff-changed{ background:#fff6cc; border-left:4px solid #e0b400; padding:6px 8px; border-radius:6px; margin-bottom:6px; }
 .diff-removed{ background:#fde3e0; border-left:4px solid #c1613f; padding:6px 8px; border-radius:6px; margin-bottom:6px; text-decoration:line-through; opacity:.85; }
@@ -762,6 +804,23 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
     <button class="modal-close" id="closeMonthDataModal">閉じる</button>
   </div>
 </div>
+<div class="modal-overlay" id="kanriboModal">
+  <div class="modal-sheet">
+    <div class="modal-title">📋 管理簿（苗テラス）</div>
+    <div class="modal-sub">温度・CO2濃度・圧力を毎日記録します（休日も記入してください）</div>
+    <div id="kanriboBody"></div>
+    <button class="modal-close" id="closeKanriboModal">閉じる</button>
+  </div>
+</div>
+<div class="modal-overlay" id="baiyoekiModal">
+  <div class="modal-sheet">
+    <div class="modal-title">📋 培養液記録シート（苗テラス）</div>
+    <div class="modal-sub">EC・pH・培養液の残量を記録します（毎週土曜日のみ記入できます）</div>
+    <div id="baiyoekiBody"></div>
+    <button class="modal-close" id="closeBaiyoekiModal">閉じる</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- Firebase SDK (compat版。設定は下部スクリプト内 firebaseConfig を参照) -->
@@ -1611,6 +1670,21 @@ function render(){
       `;
       list.appendChild(row);
     });
+
+    if(currentTab==="asa" && section.name==="苗テラス"){
+      const entryRow=document.createElement("div");
+      entryRow.className="record-entry-row";
+      entryRow.innerHTML=`<button class="record-entry-btn" id="openKanriboBtn">📋 管理簿に記入・記録を見る</button>`;
+      list.appendChild(entryRow);
+      entryRow.querySelector("#openKanriboBtn").addEventListener("click",(e)=>{ e.stopPropagation(); openKanriboModal(); });
+    }
+    if(currentTab==="hiru" && section.name==="苗テラス"){
+      const entryRow=document.createElement("div");
+      entryRow.className="record-entry-row";
+      entryRow.innerHTML=`<button class="record-entry-btn" id="openBaiyoekiBtn">📋 培養液記録シートに記入・記録を見る</button>`;
+      list.appendChild(entryRow);
+      entryRow.querySelector("#openBaiyoekiBtn").addEventListener("click",(e)=>{ e.stopPropagation(); openBaiyoekiModal(); });
+    }
 
     if(!readOnly && editMode){
       const addRow=document.createElement("div");
@@ -3585,6 +3659,281 @@ document.getElementById("dutySubNav").addEventListener("click", async (e)=>{
   btn.classList.add("active");
   dutySub = btn.getAttribute("data-dsub");
   await renderDutyPanel();
+});
+
+/* =========================================================================
+   苗テラス 記録シート（朝: 管理簿 / 昼: 培養液記録シート）
+   ・日付は自動記入、休日に関わらず毎日記録可能（培養液記録シートは毎週土曜のみ）
+   ・直近3ヶ月分を保持し、履歴は複数ページに分けて表示する
+   ========================================================================= */
+function kanriboCol(){ return db.collection("kanribo"); }
+function baiyoekiCol(){ return db.collection("baiyoueki"); }
+const LOG_RETENTION_DAYS = 92; // 3ヶ月分を保持
+const KANRIBO_PAGE_SIZE = 10;
+const BAIYOUEKI_PAGE_SIZE = 6;
+
+/* 保持期間の中で最も古い日付(この日より前は整理対象) */
+function oldestKeptLogDate(){
+  const base = new Date();
+  base.setDate(base.getDate() - (LOG_RETENTION_DAYS - 1));
+  return formatDateStr(base);
+}
+async function pruneOldLogs(col){
+  if(!firebaseReady) return;
+  try{
+    const oldest = oldestKeptLogDate();
+    const q = await col.where(firebase.firestore.FieldPath.documentId(), "<", oldest).get();
+    for(const d of q.docs){ await d.ref.delete(); }
+  }catch(e){ /* 整理失敗は致命的でないため無視 */ }
+}
+
+/* ---------- 管理簿（朝管理・苗テラス・毎日） ---------- */
+let kanriboRecords = [];
+let kanriboPage = 0;
+
+async function openKanriboModal(){
+  const bodyEl = document.getElementById("kanriboBody");
+  bodyEl.innerHTML = `<div class="empty-note">読み込み中…</div>`;
+  document.getElementById("kanriboModal").classList.add("show");
+  if(!firebaseReady){
+    bodyEl.innerHTML = `<div class="empty-note">Firebase未設定のため利用できません</div>`;
+    return;
+  }
+  const today = getTodayStr();
+  let todayData = null;
+  try{
+    const snap = await kanriboCol().doc(today).get();
+    todayData = snap.exists ? snap.data() : null;
+  }catch(e){ /* 読み込めなくてもフォームは表示する */ }
+
+  bodyEl.innerHTML = `
+    <div class="log-date-banner">${dowLabel()} の記録</div>
+    <div class="log-form" id="kanriboForm">
+      <div class="log-field">
+        <label>記録者の名前</label>
+        <input type="text" id="krRecorder" placeholder="名前を入力" value="${escapeHtml(todayData && todayData.recorder || "")}">
+      </div>
+      <div class="log-field-pair">
+        <div class="log-field"><label>温度 設定値(℃)</label><input type="text" inputmode="decimal" id="krTempSet" value="${escapeHtml(todayData && todayData.tempSet || "")}"></div>
+        <div class="log-field"><label>温度 現在値(℃)</label><input type="text" inputmode="decimal" id="krTempCur" value="${escapeHtml(todayData && todayData.tempCur || "")}"></div>
+      </div>
+      <div class="log-field-pair">
+        <div class="log-field"><label>CO2 設定値(ppm)</label><input type="text" inputmode="decimal" id="krCo2Set" value="${escapeHtml(todayData && todayData.co2Set || "")}"></div>
+        <div class="log-field"><label>CO2 現在値(ppm)</label><input type="text" inputmode="decimal" id="krCo2Cur" value="${escapeHtml(todayData && todayData.co2Cur || "")}"></div>
+      </div>
+      <div class="log-field-pair">
+        <div class="log-field"><label>一次圧</label><input type="text" inputmode="decimal" id="krP1" value="${escapeHtml(todayData && todayData.pressure1 || "")}"></div>
+        <div class="log-field"><label>二次圧</label><input type="text" inputmode="decimal" id="krP2" value="${escapeHtml(todayData && todayData.pressure2 || "")}"></div>
+      </div>
+      <button class="log-save-btn" id="krSaveBtn">${todayData?"この内容で上書き保存":"保存する"}</button>
+    </div>
+    <div class="log-section-title">📖 過去の記録（直近3ヶ月）</div>
+    <div id="kanriboHistory"><div class="empty-note">読み込み中…</div></div>
+  `;
+  document.getElementById("krSaveBtn").addEventListener("click", saveKanribo);
+  loadKanriboHistory();
+}
+async function saveKanribo(){
+  const recorder = document.getElementById("krRecorder").value.trim();
+  if(!recorder){ showToast("記録者の名前を入力してください"); return; }
+  const data = {
+    recorder,
+    tempSet: document.getElementById("krTempSet").value.trim(),
+    tempCur: document.getElementById("krTempCur").value.trim(),
+    co2Set: document.getElementById("krCo2Set").value.trim(),
+    co2Cur: document.getElementById("krCo2Cur").value.trim(),
+    pressure1: document.getElementById("krP1").value.trim(),
+    pressure2: document.getElementById("krP2").value.trim(),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  try{
+    await kanriboCol().doc(getTodayStr()).set(data, { merge:true });
+    showToast("管理簿を保存しました");
+    pruneOldLogs(kanriboCol());
+    loadKanriboHistory();
+  }catch(e){
+    toastFail("管理簿の保存", e);
+  }
+}
+async function loadKanriboHistory(){
+  const histEl = document.getElementById("kanriboHistory");
+  if(!histEl) return;
+  try{
+    const oldest = oldestKeptLogDate();
+    const today = getTodayStr();
+    const q = await kanriboCol()
+      .where(firebase.firestore.FieldPath.documentId(), ">=", oldest)
+      .where(firebase.firestore.FieldPath.documentId(), "<=", today)
+      .get();
+    kanriboRecords = q.docs.map(d=>Object.assign({ date:d.id }, d.data())).sort((a,b)=> a.date < b.date ? 1 : -1);
+    kanriboPage = 0;
+    renderKanriboHistoryPage();
+  }catch(e){
+    histEl.innerHTML = `<div class="empty-note">読み込みに失敗しました（${escapeHtml(errDetail(e))}）</div>`;
+  }
+}
+function renderKanriboHistoryPage(){
+  const histEl = document.getElementById("kanriboHistory");
+  if(!histEl) return;
+  if(kanriboRecords.length===0){
+    histEl.innerHTML = `<div class="empty-note">まだ記録がありません</div>`;
+    return;
+  }
+  const totalPages = Math.max(1, Math.ceil(kanriboRecords.length / KANRIBO_PAGE_SIZE));
+  kanriboPage = Math.min(Math.max(kanriboPage,0), totalPages-1);
+  const start = kanriboPage * KANRIBO_PAGE_SIZE;
+  const pageRecords = kanriboRecords.slice(start, start+KANRIBO_PAGE_SIZE);
+  const rows = pageRecords.map(r=>{
+    const { md, dow } = shortDowLabel(r.date);
+    return `<div class="log-history-row">
+      <div class="lh-date">${md}(${dow})</div>
+      <div class="lh-body">
+        <span class="lh-recorder">${escapeHtml(r.recorder||"-")}</span>
+        温度: ${escapeHtml(r.tempSet||"-")}→${escapeHtml(r.tempCur||"-")}℃／CO2: ${escapeHtml(r.co2Set||"-")}→${escapeHtml(r.co2Cur||"-")}ppm／一次圧: ${escapeHtml(r.pressure1||"-")}／二次圧: ${escapeHtml(r.pressure2||"-")}
+      </div>
+    </div>`;
+  }).join("");
+  const pager = totalPages>1 ? `
+    <div class="backup-pager">
+      <button id="kanriboPagerPrev" ${kanriboPage===0?"disabled":""}>← 前へ</button>
+      <span class="backup-pager-label">${kanriboPage+1} / ${totalPages}</span>
+      <button id="kanriboPagerNext" ${kanriboPage>=totalPages-1?"disabled":""}>次へ →</button>
+    </div>` : "";
+  histEl.innerHTML = rows + pager;
+  const prevBtn = document.getElementById("kanriboPagerPrev");
+  const nextBtn = document.getElementById("kanriboPagerNext");
+  if(prevBtn) prevBtn.addEventListener("click", ()=>{ kanriboPage--; renderKanriboHistoryPage(); });
+  if(nextBtn) nextBtn.addEventListener("click", ()=>{ kanriboPage++; renderKanriboHistoryPage(); });
+}
+
+/* ---------- 培養液記録シート（昼管理・苗テラス・毎週土曜のみ） ---------- */
+let baiyoekiRecords = [];
+let baiyoekiPage = 0;
+function isSaturdayToday(){ return new Date().getDay()===6; }
+
+async function openBaiyoekiModal(){
+  const bodyEl = document.getElementById("baiyoekiBody");
+  bodyEl.innerHTML = `<div class="empty-note">読み込み中…</div>`;
+  document.getElementById("baiyoekiModal").classList.add("show");
+  if(!firebaseReady){
+    bodyEl.innerHTML = `<div class="empty-note">Firebase未設定のため利用できません</div>`;
+    return;
+  }
+  const saturday = isSaturdayToday();
+  let todayData = null;
+  if(saturday){
+    try{
+      const snap = await baiyoekiCol().doc(getTodayStr()).get();
+      todayData = snap.exists ? snap.data() : null;
+    }catch(e){ /* 読み込めなくてもフォームは表示する */ }
+  }
+
+  const formHtml = saturday ? `
+    <div class="log-date-banner">${dowLabel()} の記録</div>
+    <div class="log-form" id="baiyoekiForm">
+      <div class="log-field">
+        <label>記録者の名前</label>
+        <input type="text" id="beRecorder" placeholder="名前を入力" value="${escapeHtml(todayData && todayData.recorder || "")}">
+      </div>
+      <div class="log-field-pair">
+        <div class="log-field"><label>EC</label><input type="text" inputmode="decimal" id="beEc" value="${escapeHtml(todayData && todayData.ec || "")}"></div>
+        <div class="log-field"><label>pH</label><input type="text" inputmode="decimal" id="bePh" value="${escapeHtml(todayData && todayData.ph || "")}"></div>
+      </div>
+      <div class="log-field">
+        <label>培養液の残量(cm)</label>
+        <input type="text" inputmode="decimal" id="beLevel" value="${escapeHtml(todayData && todayData.level || "")}">
+      </div>
+      <button class="log-save-btn" id="beSaveBtn">${todayData?"この内容で上書き保存":"保存する"}</button>
+    </div>
+  ` : `
+    <div class="log-disabled-note">培養液記録シートは毎週土曜日のみ記入できます（本日は${dowLabel()}）</div>
+  `;
+
+  bodyEl.innerHTML = formHtml + `
+    <div class="log-section-title">📖 過去の記録（直近3ヶ月・毎週土曜）</div>
+    <div id="baiyoekiHistory"><div class="empty-note">読み込み中…</div></div>
+  `;
+  if(saturday){
+    document.getElementById("beSaveBtn").addEventListener("click", saveBaiyoeki);
+  }
+  loadBaiyoekiHistory();
+}
+async function saveBaiyoeki(){
+  if(!isSaturdayToday()){ showToast("培養液記録シートは毎週土曜日のみ記入できます"); return; }
+  const recorder = document.getElementById("beRecorder").value.trim();
+  if(!recorder){ showToast("記録者の名前を入力してください"); return; }
+  const data = {
+    recorder,
+    ec: document.getElementById("beEc").value.trim(),
+    ph: document.getElementById("bePh").value.trim(),
+    level: document.getElementById("beLevel").value.trim(),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  try{
+    await baiyoekiCol().doc(getTodayStr()).set(data, { merge:true });
+    showToast("培養液記録シートを保存しました");
+    pruneOldLogs(baiyoekiCol());
+    loadBaiyoekiHistory();
+  }catch(e){
+    toastFail("培養液記録シートの保存", e);
+  }
+}
+async function loadBaiyoekiHistory(){
+  const histEl = document.getElementById("baiyoekiHistory");
+  if(!histEl) return;
+  try{
+    const oldest = oldestKeptLogDate();
+    const today = getTodayStr();
+    const q = await baiyoekiCol()
+      .where(firebase.firestore.FieldPath.documentId(), ">=", oldest)
+      .where(firebase.firestore.FieldPath.documentId(), "<=", today)
+      .get();
+    baiyoekiRecords = q.docs.map(d=>Object.assign({ date:d.id }, d.data())).sort((a,b)=> a.date < b.date ? 1 : -1);
+    baiyoekiPage = 0;
+    renderBaiyoekiHistoryPage();
+  }catch(e){
+    histEl.innerHTML = `<div class="empty-note">読み込みに失敗しました（${escapeHtml(errDetail(e))}）</div>`;
+  }
+}
+function renderBaiyoekiHistoryPage(){
+  const histEl = document.getElementById("baiyoekiHistory");
+  if(!histEl) return;
+  if(baiyoekiRecords.length===0){
+    histEl.innerHTML = `<div class="empty-note">まだ記録がありません</div>`;
+    return;
+  }
+  const totalPages = Math.max(1, Math.ceil(baiyoekiRecords.length / BAIYOUEKI_PAGE_SIZE));
+  baiyoekiPage = Math.min(Math.max(baiyoekiPage,0), totalPages-1);
+  const start = baiyoekiPage * BAIYOUEKI_PAGE_SIZE;
+  const pageRecords = baiyoekiRecords.slice(start, start+BAIYOUEKI_PAGE_SIZE);
+  const rows = pageRecords.map(r=>{
+    const { md, dow } = shortDowLabel(r.date);
+    return `<div class="log-history-row">
+      <div class="lh-date">${md}(${dow})</div>
+      <div class="lh-body">
+        <span class="lh-recorder">${escapeHtml(r.recorder||"-")}</span>
+        EC: ${escapeHtml(r.ec||"-")}／pH: ${escapeHtml(r.ph||"-")}／残量: ${escapeHtml(r.level||"-")}cm
+      </div>
+    </div>`;
+  }).join("");
+  const pager = totalPages>1 ? `
+    <div class="backup-pager">
+      <button id="baiyoekiPagerPrev" ${baiyoekiPage===0?"disabled":""}>← 前へ</button>
+      <span class="backup-pager-label">${baiyoekiPage+1} / ${totalPages}</span>
+      <button id="baiyoekiPagerNext" ${baiyoekiPage>=totalPages-1?"disabled":""}>次へ →</button>
+    </div>` : "";
+  histEl.innerHTML = rows + pager;
+  const prevBtn = document.getElementById("baiyoekiPagerPrev");
+  const nextBtn = document.getElementById("baiyoekiPagerNext");
+  if(prevBtn) prevBtn.addEventListener("click", ()=>{ baiyoekiPage--; renderBaiyoekiHistoryPage(); });
+  if(nextBtn) nextBtn.addEventListener("click", ()=>{ baiyoekiPage++; renderBaiyoekiHistoryPage(); });
+}
+
+document.getElementById("closeKanriboModal").addEventListener("click", ()=>{
+  document.getElementById("kanriboModal").classList.remove("show");
+});
+document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
+  document.getElementById("baiyoekiModal").classList.remove("show");
 });
 
 /* ---------- init ---------- */
