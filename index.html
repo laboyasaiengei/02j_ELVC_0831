@@ -807,7 +807,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 <div class="modal-overlay" id="kanriboModal">
   <div class="modal-sheet">
     <div class="modal-title">📋 管理簿（苗テラス）</div>
-    <div class="modal-sub">温度・CO2濃度・圧力を毎日記録します（休日も記入してください）</div>
+    <div class="modal-sub">温度・CO2濃度・圧力を記入してください</div>
     <div id="kanriboBody"></div>
     <button class="modal-close" id="closeKanriboModal">閉じる</button>
   </div>
@@ -815,7 +815,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 <div class="modal-overlay" id="baiyoekiModal">
   <div class="modal-sheet">
     <div class="modal-title">📋 培養液記録シート（苗テラス）</div>
-    <div class="modal-sub">EC・pH・培養液の残量を記録します（毎週土曜日のみ記入できます）</div>
+    <div class="modal-sub">培養液のEC・pH・残量を記入してください（毎週土曜日のみ記入できます）</div>
     <div id="baiyoekiBody"></div>
     <button class="modal-close" id="closeBaiyoekiModal">閉じる</button>
   </div>
@@ -3710,7 +3710,7 @@ async function openKanriboModal(){
     <div class="log-date-banner">${dowLabel()} の記録</div>
     <div class="log-form" id="kanriboForm">
       <div class="log-field">
-        <label>記録者の名前</label>
+        <label>名前</label>
         <input type="text" id="krRecorder" placeholder="名前を入力" value="${escapeHtml(todayData && todayData.recorder || "")}">
       </div>
       <div class="log-field-pair">
@@ -3735,7 +3735,7 @@ async function openKanriboModal(){
 }
 async function saveKanribo(){
   const recorder = document.getElementById("krRecorder").value.trim();
-  if(!recorder){ showToast("記録者の名前を入力してください"); return; }
+  if(!recorder){ showToast("名前を入力してください"); return; }
   const data = {
     recorder,
     tempSet: document.getElementById("krTempSet").value.trim(),
@@ -3832,7 +3832,7 @@ async function openBaiyoekiModal(){
     <div class="log-date-banner">${dowLabel()} の記録</div>
     <div class="log-form" id="baiyoekiForm">
       <div class="log-field">
-        <label>記録者の名前</label>
+        <label>名前</label>
         <input type="text" id="beRecorder" placeholder="名前を入力" value="${escapeHtml(todayData && todayData.recorder || "")}">
       </div>
       <div class="log-field-pair">
@@ -3861,7 +3861,7 @@ async function openBaiyoekiModal(){
 async function saveBaiyoeki(){
   if(!isSaturdayToday()){ showToast("培養液記録シートは毎週土曜日のみ記入できます"); return; }
   const recorder = document.getElementById("beRecorder").value.trim();
-  if(!recorder){ showToast("記録者の名前を入力してください"); return; }
+  if(!recorder){ showToast("名前を入力してください"); return; }
   const data = {
     recorder,
     ec: document.getElementById("beEc").value.trim(),
