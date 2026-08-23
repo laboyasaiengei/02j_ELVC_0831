@@ -3842,7 +3842,7 @@ function renderKanriboHistoryPage(){
       <div class="lh-date">${md}(${dow})</div>
       <div class="lh-body">
         <span class="lh-recorder">${escapeHtml(r.recorder||"-")}</span>
-                        温度: ${escapeHtml(r.tempSet||"-")}:${escapeHtml(r.tempCur||"-")}℃／CO2: ${escapeHtml(r.co2Set||"-")}:${escapeHtml(r.co2Cur||"-")}ppm<br>一次圧: ${escapeHtml(r.pressure1||"-")}／二次圧: ${escapeHtml(r.pressure2||"-")}
+                        温度: ${escapeHtml(r.tempSet||"-")}：${escapeHtml(r.tempCur||"-")}℃／CO2: ${escapeHtml(r.co2Set||"-")}：${escapeHtml(r.co2Cur||"-")}ppm<br>一次圧: ${escapeHtml(r.pressure1||"-")}／二次圧: ${escapeHtml(r.pressure2||"-")}
       </div>
     </div>`;
   }).join("");
