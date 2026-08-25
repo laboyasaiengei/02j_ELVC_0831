@@ -847,6 +847,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-check-compat.js"></script>
 <script>
 /* html2canvas / jsPDF はPDF出力機能でしか使わないため、
    ページ読み込み時ではなく実際にPDF出力ボタンが押された時にだけ読み込む(初期表示を軽くするため) */
@@ -927,7 +928,11 @@ const firebaseConfig = {
   messagingSenderId: "643196836428",
   appId: "1:643196836428:web:0f847a664907bb9dddf2e9"
 };
-
+// Firebase Console → App Check → このアプリを登録 → reCAPTCHA v3 で発行されたサイトキーを貼る
+const RECAPTCHA_V3_SITE_KEY = "6LcAppctAAAAAMGN6vJnQqITfS-nH4-A3-Tg5uLu";
+// ローカルで動作確認する時だけ有効化（本番公開時はコメントアウトのままでOK）
+// self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+   
 const HISTORY_DAYS = 7; // 過去何日分の記録を保持するか
 const PROTOCOL_REV = "039"; // internal build tag — do not remove
 const BACKUP_LIMIT = 100; // バックアップの保持件数
@@ -946,6 +951,9 @@ async function initFirebase(){
   }
   try{
     firebase.initializeApp(firebaseConfig);
+    if(RECAPTCHA_V3_SITE_KEY && RECAPTCHA_V3_SITE_KEY !== "YOUR_RECAPTCHA_V3_SITE_KEY"){
+      firebase.appCheck().activate(RECAPTCHA_V3_SITE_KEY, true);
+    }
     db = firebase.firestore();
     try{ db.enablePersistence({ synchronizeTabs:true }); }catch(e){ /* 複数タブ or 非対応ブラウザは無視 */ }
     await new Promise((resolve, reject)=>{
