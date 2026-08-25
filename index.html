@@ -366,12 +366,12 @@
     transition:opacity .25s ease;
   }
   .app-loading-overlay.hide{ opacity:0; pointer-events:none; }
-  .app-loading-spinner{
-    width:38px; height:38px; border-radius:50%;
-    border:4px solid var(--leaf-100); border-top-color:var(--leaf-600);
-    animation:app-loading-spin .8s linear infinite;
+    .app-loading-leaf{
+    animation:app-loading-spin 1.4s ease-in-out infinite;
+    transform-origin:center;
   }
   @keyframes app-loading-spin{ to{ transform:rotate(360deg); } }
+  .app-loading-appname{ font-family:"Zen Maru Gothic",sans-serif; font-weight:900; font-size:15px; letter-spacing:.06em; color:var(--leaf-600); }
   .app-loading-text{ font-family:"Zen Maru Gothic",sans-serif; font-size:13px; color:var(--ink-soft); }
 
   .modal-overlay{
@@ -647,7 +647,11 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 <div id="themeCurtain" class="theme-curtain"></div>
 
 <div class="app-loading-overlay" id="appLoadingOverlay">
-  <div class="app-loading-spinner"></div>
+  <svg class="app-loading-leaf" viewBox="0 0 48 48" width="44" height="44" fill="none">
+    <path d="M24 6C14 6 7 14 7 25c0 8 5 15 12 17.5C18 34 18 24 24 15c6 9 6 19 5 27.5C36 40 41 33 41 25 41 14 34 6 24 6Z"
+      fill="var(--leaf-500)" stroke="var(--leaf-600)" stroke-width="1.6" stroke-linejoin="round"/>
+  </svg>
+  <div class="app-loading-appname">ATLAS</div>
   <div class="app-loading-text">読み込み中…</div>
 </div>
 
