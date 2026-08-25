@@ -944,6 +944,45 @@ function isConfigPlaceholder(){
   return !firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY";
 }
 
+// 特定OS(端末)でApp Check/認証まわりのネットワーク通信が固まり、
+// 読み込みオーバーレイから一切進まなくなる不具合の対策。
+// 指定時間内に完了しなければ強制的にタイムアウトさせる。
+function withTimeout(promise, ms, message){
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(message || "通信がタイムアウトしました"));
+    }, ms);
+    promise.then(
+      (v) => { window.clearTimeout(timer); resolve(v); },
+      (e) => { window.clearTimeout(timer); reject(e); }
+    );
+  });
+}
+
+// 特定OS(端末)でApp Check/認証まわりのネットワーク通信が固まり、
+// 読み込みオーバーレイから一切進まなくなる不具合の対策。
+// 指定時間内に完了しなければ強制的にタイムアウトさせる。
+function withTimeout(promise, ms, message){
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(message || "通信がタイムアウトしました"));
+    }, ms);
+    promise.then(
+      (v) => { window.clearTimeout(timer); resolve(v); },
+      (e) => { window.clearTimeout(timer); reject(e); }
+    );
+  });
+}
+
+// 動作検証用：URLに ?appcheck=off を付けて開くと、App Check(reCAPTCHA)を
+// 起動せずに立ち上げる。特定端末で固まる原因の切り分けに使う。
+// （ファイルを作り直さず同じURLで比較できるようにするための一時的な仕組み）
+function isAppCheckDisabledByUrl(){
+  try{
+    return new URLSearchParams(window.location.search).get("appcheck") === "off";
+  }catch(e){ return false; }
+}
+
 async function initFirebase(){
   if(isConfigPlaceholder()){
     showConfigBanner();
@@ -951,17 +990,17 @@ async function initFirebase(){
   }
   try{
     firebase.initializeApp(firebaseConfig);
-    if(RECAPTCHA_V3_SITE_KEY && RECAPTCHA_V3_SITE_KEY !== "YOUR_RECAPTCHA_V3_SITE_KEY"){
+    if(RECAPTCHA_V3_SITE_KEY && RECAPTCHA_V3_SITE_KEY !== "YOUR_RECAPTCHA_V3_SITE_KEY" && !isAppCheckDisabledByUrl()){
       firebase.appCheck().activate(RECAPTCHA_V3_SITE_KEY, true);
     }
     db = firebase.firestore();
     try{ db.enablePersistence({ synchronizeTabs:true }); }catch(e){ /* 複数タブ or 非対応ブラウザは無視 */ }
-    await new Promise((resolve, reject)=>{
+    await withTimeout(new Promise((resolve, reject)=>{
       firebase.auth().onAuthStateChanged(user=>{
         if(user){ resolve(); }
       }, reject);
       firebase.auth().signInAnonymously().catch(reject);
-    });
+    }), 15000, "サインインの通信がタイムアウトしました");
     firebaseReady = true;
   }catch(e){
     firebaseReady = false;
@@ -4005,6 +4044,15 @@ document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
   // 画面が「チラッ」と点滅して見える。最低表示時間を設けて滑らかにする。
   const OVERLAY_MIN_MS = 350;
   const overlayShownAt = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+  // 個別のタイムアウト対策を抜けてもなお、どこかの通信処理が固まって
+  // オーバーレイが消えないままになる事態への最終防波堤。
+  const safetyNetId = window.setTimeout(() => {
+    const overlay = document.getElementById("appLoadingOverlay");
+    if(overlay && !overlay.classList.contains("hide")){
+      overlay.classList.add("hide");
+      showToast("読み込みに時間がかかっています。通信状況をご確認の上、再読み込みしてください");
+    }
+  }, 25000);
   try{
     await initFirebase();
     setupConnectionBanner();
@@ -4018,6 +4066,7 @@ document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
     // 何が起きても読み込み中表示だけは残さないようにする
     showToast("読み込み中にエラーが発生しました。再読み込みしてください");
   }finally{
+    window.clearTimeout(safetyNetId);
     const elapsed = ((typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now()) - overlayShownAt;
     const remaining = Math.max(0, OVERLAY_MIN_MS - elapsed);
     setTimeout(()=>{
