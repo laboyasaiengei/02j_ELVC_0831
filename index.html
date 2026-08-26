@@ -944,43 +944,16 @@ function isConfigPlaceholder(){
   return !firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY";
 }
 
-// 特定OS(端末)でApp Check/認証まわりのネットワーク通信が固まり、
-// 読み込みオーバーレイから一切進まなくなる不具合の対策。
-// 指定時間内に完了しなければ強制的にタイムアウトさせる。
-function withTimeout(promise, ms, message){
-  return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      reject(new Error(message || "通信がタイムアウトしました"));
-    }, ms);
-    promise.then(
-      (v) => { window.clearTimeout(timer); resolve(v); },
-      (e) => { window.clearTimeout(timer); reject(e); }
-    );
-  });
-}
-
-// 特定OS(端末)でApp Check/認証まわりのネットワーク通信が固まり、
-// 読み込みオーバーレイから一切進まなくなる不具合の対策。
-// 指定時間内に完了しなければ強制的にタイムアウトさせる。
-function withTimeout(promise, ms, message){
-  return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      reject(new Error(message || "通信がタイムアウトしました"));
-    }, ms);
-    promise.then(
-      (v) => { window.clearTimeout(timer); resolve(v); },
-      (e) => { window.clearTimeout(timer); reject(e); }
-    );
-  });
-}
-
-// 動作検証用：URLに ?appcheck=off を付けて開くと、App Check(reCAPTCHA)を
-// 起動せずに立ち上げる。特定端末で固まる原因の切り分けに使う。
-// （ファイルを作り直さず同じURLで比較できるようにするための一時的な仕組み）
-function isAppCheckDisabledByUrl(){
-  try{
-    return new URLSearchParams(window.location.search).get("appcheck") === "off";
-  }catch(e){ return false; }
+/* 指定ms以内にpromiseが解決/拒否しなければ強制的にreject（timeout）する。
+   iOS/Safari(特にホーム画面追加=standalone起動時)ではFirebase Auth/Firestoreが
+   内部で使うIndexedDBがまれに開かないまま固まり、Promiseが永久に解決しない
+   既知のWebKit不具合がある。これをそのまま待ち続けると画面が固まって見えるため、
+   Firebase関連の待ち受けは必ずこのタイムアウトでガードする。 */
+function withTimeout(promise, ms, tag){
+  return Promise.race([
+    promise,
+    new Promise((_, reject)=> setTimeout(()=> reject(Object.assign(new Error(tag||"timeout"), { isTimeout:true })), ms))
+  ]);
 }
 
 async function initFirebase(){
@@ -990,21 +963,29 @@ async function initFirebase(){
   }
   try{
     firebase.initializeApp(firebaseConfig);
-    if(RECAPTCHA_V3_SITE_KEY && RECAPTCHA_V3_SITE_KEY !== "YOUR_RECAPTCHA_V3_SITE_KEY" && !isAppCheckDisabledByUrl()){
+    if(RECAPTCHA_V3_SITE_KEY && RECAPTCHA_V3_SITE_KEY !== "YOUR_RECAPTCHA_V3_SITE_KEY"){
       firebase.appCheck().activate(RECAPTCHA_V3_SITE_KEY, true);
     }
     db = firebase.firestore();
     try{ db.enablePersistence({ synchronizeTabs:true }); }catch(e){ /* 複数タブ or 非対応ブラウザは無視 */ }
+    // Authの既定の永続化(indexedDB)がiOS Safariでハングすることがあるため、
+    // localStorageベースの永続化に切り替えてから匿名ログインする。
+    // これ自体が失敗しても致命的ではないので握りつぶして続行する。
+    try{ await withTimeout(firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL), 3000, "persistence-timeout"); }catch(e){ /* 失敗しても続行 */ }
     await withTimeout(new Promise((resolve, reject)=>{
       firebase.auth().onAuthStateChanged(user=>{
         if(user){ resolve(); }
       }, reject);
       firebase.auth().signInAnonymously().catch(reject);
-    }), 15000, "サインインの通信がタイムアウトしました");
+    }), 10000, "auth-timeout");
     firebaseReady = true;
   }catch(e){
     firebaseReady = false;
-    showToast("Firebaseの初期化に失敗しました。設定を確認してください");
+    if(e && e.isTimeout){
+      showToast("読み込みに時間がかかっています。通信状況をご確認のうえ再読み込みしてください");
+    }else{
+      showToast("Firebaseの初期化に失敗しました。設定を確認してください");
+    }
   }
 }
 
@@ -4043,16 +4024,24 @@ document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
   // 読み込みが一瞬で終わるとオーバーレイが表示された直後に消え、
   // 画面が「チラッ」と点滅して見える。最低表示時間を設けて滑らかにする。
   const OVERLAY_MIN_MS = 350;
+  // iOS Safari(主にホーム画面追加=standalone起動時)ではFirebase内部が使う
+  // IndexedDBがまれに開かないまま固まり、initFirebase()やその後のFirestore
+  // 読み込みが永久に解決しないことがある(WebKit側の既知不具合)。
+  // 個々の待ち受けにタイムアウトを入れていても想定外の箇所で固まる可能性は
+  // 残るため、起動シーケンス全体にも上限を設け、これを超えたら強制的に
+  // 読み込み中表示を終了させて「ずっとくるくる回ったまま」を防ぐ。
+  const OVERLAY_HARD_TIMEOUT_MS = 15000;
   const overlayShownAt = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
-  // 個別のタイムアウト対策を抜けてもなお、どこかの通信処理が固まって
-  // オーバーレイが消えないままになる事態への最終防波堤。
-  const safetyNetId = window.setTimeout(() => {
+  let watchdogFired = false;
+  const hideOverlayNow = ()=>{
     const overlay = document.getElementById("appLoadingOverlay");
-    if(overlay && !overlay.classList.contains("hide")){
-      overlay.classList.add("hide");
-      showToast("読み込みに時間がかかっています。通信状況をご確認の上、再読み込みしてください");
-    }
-  }, 25000);
+    if(overlay) overlay.classList.add("hide");
+  };
+  const watchdog = setTimeout(()=>{
+    watchdogFired = true;
+    hideOverlayNow();
+    showToast("読み込みに時間がかかっています。通信状況をご確認のうえ再読み込みしてください");
+  }, OVERLAY_HARD_TIMEOUT_MS);
   try{
     await initFirebase();
     setupConnectionBanner();
@@ -4066,13 +4055,12 @@ document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
     // 何が起きても読み込み中表示だけは残さないようにする
     showToast("読み込み中にエラーが発生しました。再読み込みしてください");
   }finally{
-    window.clearTimeout(safetyNetId);
-    const elapsed = ((typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now()) - overlayShownAt;
-    const remaining = Math.max(0, OVERLAY_MIN_MS - elapsed);
-    setTimeout(()=>{
-      const overlay = document.getElementById("appLoadingOverlay");
-      if(overlay) overlay.classList.add("hide");
-    }, remaining);
+    clearTimeout(watchdog);
+    if(!watchdogFired){
+      const elapsed = ((typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now()) - overlayShownAt;
+      const remaining = Math.max(0, OVERLAY_MIN_MS - elapsed);
+      setTimeout(hideOverlayNow, remaining);
+    }
   }
 })();
 </script>
