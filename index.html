@@ -1360,13 +1360,23 @@ async function ensureStructureLoaded(tab){
       if(tab==="hiru"){ await applyHiruContentFixV2(); }
       return structures[tab];
     }
+    // ここに来るのは snap.exists===false の場合のみ（＝そのタブがまだ一度も
+    // 作成されていない、本当の初回起動）。この場合だけ初期データを書き込む。
+    const seeded = withIds(INITIAL_DATA[tab].sections);
+    structures[tab] = seeded;
+    await saveStructure(tab);
+    return seeded;
   }catch(e){
+    // 【重要】取得(get)自体が失敗/タイムアウトした場合は、絶対に初期データで
+    // 上書き保存してはいけない。実際のデータがあるのに読めなかっただけの
+    // 可能性が高く、ここで書き込むと本物のデータを消してしまう。
+    // 既にメモリ上に前回分のデータがあればそれを維持し、無ければ
+    // 「保存はせず」表示だけ初期データにして、次に正常に読めた時に
+    // 正しいデータへ復旧できるようにする。
     connErrFail("栽培管理データの取得", e);
+    if(structures[tab]) return structures[tab];
+    return withIds(INITIAL_DATA[tab].sections);
   }
-  const seeded = withIds(INITIAL_DATA[tab].sections);
-  structures[tab] = seeded;
-  await saveStructure(tab);
-  return seeded;
 }
 
 async function applyHiruContentFixV2(){
@@ -1374,7 +1384,14 @@ async function applyHiruContentFixV2(){
   try{
     const flag = await withDbTimeout(metaRef().get(), "metaFlag-get-timeout");
     if(flag.exists && flag.data() && flag.data().hiruContentFixV2) return;
-  }catch(e){ /* 未設定として続行 */ }
+  }catch(e){
+    // 【重要】移行済みかどうかの確認自体が失敗した場合、「未移行」とみなして
+    // 上書きしてはいけない（実際は移行済みなのに確認できなかっただけの
+    // 可能性があり、その場合ここで実データを消してしまう）。
+    // 確認できなかった時は何もせず、次回の起動時に再確認する。
+    console.warn("hiruContentFixV2フラグの確認に失敗。今回はスキップします:", e);
+    return;
+  }
 
   structures.hiru = withIds(INITIAL_DATA.hiru.sections);
   await saveStructure("hiru");
@@ -1416,36 +1433,57 @@ async function saveChecks(tab){
   if(!firebaseReady){ showConfigWarningOnce(); return; }
   const stats = countStats(tab, todayChecked);
   dateStats[todayStr] = stats;
-  try{
-    await checksRef(tab, todayStr).set({
-      data: todayChecked,
-      stats: stats,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    scheduleAutoBackup(tab);
-  }catch(e){
-    connErrFail("本日のチェック状態の保存", e);
-  }
-}
-  async function transactChecks(tab, mutateFn){
-  if(!firebaseReady){ showConfigWarningOnce(); return; }
-  try{
-    await db.runTransaction(async (tx)=>{
-      const snap = await tx.get(checksRef(tab, todayStr));
-      const current = (snap.exists && snap.data() && snap.data().data) ? snap.data().data : {};
-      const updated = mutateFn(JSON.parse(JSON.stringify(current)));
-      const stats = countStats(tab, updated);
-      tx.set(checksRef(tab, todayStr), {
-        data: updated,
+  for(let attempt=1; attempt<=2; attempt++){
+    try{
+      await checksRef(tab, todayStr).set({
+        data: todayChecked,
         stats: stats,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
-      todayChecked = updated;
-      dateStats[todayStr] = stats;
-    });
-    scheduleAutoBackup(tab);
-  }catch(e){
-    connErrFail("本日のチェック状態の保存", e);
+      scheduleAutoBackup(tab);
+      return;
+    }catch(e){
+      if(attempt < 2){
+        console.warn("チェック状態の保存に失敗、少し待って再試行します:", e);
+        await sleep(1200);
+        continue;
+      }
+      connErrFail("本日のチェック状態の保存", e);
+    }
+  }
+}
+function sleep(ms){ return new Promise(resolve=>setTimeout(resolve, ms)); }
+
+  async function transactChecks(tab, mutateFn){
+  if(!firebaseReady){ showConfigWarningOnce(); return; }
+  // 起動直後など、端末の通信/IndexedDBがまだ本調子でないタイミングでは
+  // このトランザクションが単発で失敗することがある。少し間をおいて
+  // 1回だけ静かに再試行し、それでもダメな場合だけエラー表示に回す。
+  for(let attempt=1; attempt<=2; attempt++){
+    try{
+      await db.runTransaction(async (tx)=>{
+        const snap = await tx.get(checksRef(tab, todayStr));
+        const current = (snap.exists && snap.data() && snap.data().data) ? snap.data().data : {};
+        const updated = mutateFn(JSON.parse(JSON.stringify(current)));
+        const stats = countStats(tab, updated);
+        tx.set(checksRef(tab, todayStr), {
+          data: updated,
+          stats: stats,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        todayChecked = updated;
+        dateStats[todayStr] = stats;
+      });
+      scheduleAutoBackup(tab);
+      return;
+    }catch(e){
+      if(attempt < 2){
+        console.warn("チェック状態の保存に失敗、少し待って再試行します:", e);
+        await sleep(1200);
+        continue;
+      }
+      connErrFail("本日のチェック状態の保存", e);
+    }
   }
 }
 
