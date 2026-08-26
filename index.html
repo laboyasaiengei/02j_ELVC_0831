@@ -976,6 +976,15 @@ function withTimeout(promise, ms, tag){
     new Promise((_, reject)=> setTimeout(()=> reject(Object.assign(new Error(tag||"timeout"), { isTimeout:true })), ms))
   ]);
 }
+// 個々のFirestore呼び出し(get/set/delete)専用の短縮ラッパー。
+// iOS SafariのIndexedDBハング不具合は認証だけでなく、あらゆるFirestore
+// 通信で起こりうるため、起動時に呼ぶ主要なget/set/deleteはすべてこれで
+// 包み、8秒で見切りをつけて呼び出し元の既存のtry/catch(既定値へのフォール
+// バック)に処理を戻す。
+const FS_OP_TIMEOUT_MS = 6000;
+function withDbTimeout(promise, tag){
+  return withTimeout(promise, FS_OP_TIMEOUT_MS, tag);
+}
 
 /* ---------- 起動時の読み込み進捗表示 ---------- */
 // 「今どの段階か」を画面下部の小さなテキストに出すだけでなく、
@@ -1338,7 +1347,7 @@ async function ensureStructureLoaded(tab){
     return structures[tab];
   }
   try{
-    const snap = await structureRef(tab).get();
+    const snap = await withDbTimeout(structureRef(tab).get(), "structure-get-timeout");
     if(snap.exists && snap.data() && snap.data().sections){
       let loaded = snap.data().sections;
       if(isPlaceholderStructure(loaded)){
@@ -1363,23 +1372,23 @@ async function ensureStructureLoaded(tab){
 async function applyHiruContentFixV2(){
   if(!firebaseReady) return;
   try{
-    const flag = await metaRef().get();
+    const flag = await withDbTimeout(metaRef().get(), "metaFlag-get-timeout");
     if(flag.exists && flag.data() && flag.data().hiruContentFixV2) return;
   }catch(e){ /* 未設定として続行 */ }
 
   structures.hiru = withIds(INITIAL_DATA.hiru.sections);
   await saveStructure("hiru");
-  try{ await metaRef().set({ hiruContentFixV2:true }, { merge:true }); }catch(e){}
+  try{ await withDbTimeout(metaRef().set({ hiruContentFixV2:true }, { merge:true }), "metaFlag-set-timeout"); }catch(e){}
 }
 
 /* ---------- 保存（自動保存） ---------- */
 async function saveStructure(tab){
   if(!firebaseReady){ showConfigWarningOnce(); return; }
   try{
-    await structureRef(tab).set({
+    await withDbTimeout(structureRef(tab).set({
       sections: structures[tab],
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    }), "structure-set-timeout");
     scheduleAutoBackup(tab);
   }catch(e){
     connErrFail("栽培管理データの保存", e);
@@ -1472,10 +1481,10 @@ async function loadDateStats(tab){
   const days = getLastNDays(HISTORY_DAYS);
   const oldest = days[days.length-1];
   try{
-    const q = await db.collection("checks")
+    const q = await withDbTimeout(db.collection("checks")
       .where(firebase.firestore.FieldPath.documentId(), ">=", tab+"_"+oldest)
       .where(firebase.firestore.FieldPath.documentId(), "<=", tab+"_"+todayStr)
-      .get();
+      .get(), "dateStats-get-timeout");
     q.docs.forEach(doc=>{
       const day = doc.id.slice(tab.length+1);
       const data = doc.data();
@@ -1488,11 +1497,11 @@ async function pruneOldChecks(tab){
   const days = getLastNDays(HISTORY_DAYS);
   const oldestKept = days[days.length-1];
   try{
-    const q = await db.collection("checks")
+    const q = await withDbTimeout(db.collection("checks")
       .where(firebase.firestore.FieldPath.documentId(), ">=", tab+"_")
       .where(firebase.firestore.FieldPath.documentId(), "<", tab+"_"+oldestKept)
-      .get();
-    for(const d of q.docs){ await d.ref.delete(); }
+      .get(), "pruneChecks-get-timeout");
+    for(const d of q.docs){ await withDbTimeout(d.ref.delete(), "pruneChecks-delete-timeout"); }
   }catch(e){ /* 整理失敗は無視 */ }
 }
 
@@ -1500,7 +1509,7 @@ async function pruneOldChecks(tab){
 async function loadTodayChecks(tab){
   if(!firebaseReady){ todayChecked = {}; return; }
   try{
-    const snap = await checksRef(tab, todayStr).get();
+    const snap = await withDbTimeout(checksRef(tab, todayStr).get(), "todayChecks-get-timeout");
     todayChecked = (snap.exists && snap.data() && snap.data().data) ? snap.data().data : {};
   }catch(e){
     todayChecked = {};
@@ -1510,7 +1519,7 @@ async function loadTodayChecks(tab){
 async function loadHistoryChecks(tab, day){
   if(!firebaseReady) return {};
   try{
-    const snap = await checksRef(tab, day).get();
+    const snap = await withDbTimeout(checksRef(tab, day).get(), "historyChecks-get-timeout");
     return (snap.exists && snap.data() && snap.data().data) ? snap.data().data : {};
   }catch(e){
     flashConnError("過去のチェック履歴の取得に失敗しました（" + errDetail(e) + "）");
@@ -1611,12 +1620,17 @@ async function loadTab(tab){
   viewDate = todayStr;
   document.getElementById("datePill").textContent = dowLabel();
   unsubscribeAll();
-  await ensureStructureLoaded(tab);
-  await pruneOldChecks(tab);
-  await loadTodayChecks(tab);
-    checkedMap = todayChecked;
-  await loadViewDateAssignees(viewDate);
-  await loadDateStats(tab);
+  // 以下の5つはお互いの結果に依存しないため、直列に待つのではなく並列で走らせる。
+  // 直列だと(タイムアウト保護を入れていても)1つ8秒×5個で最大40秒待ちになり得るが、
+  // 並列なら最も遅い1つ分（最大でも約8秒）で揃う。
+  await Promise.all([
+    ensureStructureLoaded(tab),
+    pruneOldChecks(tab),
+    loadTodayChecks(tab),
+    loadViewDateAssignees(viewDate),
+    loadDateStats(tab),
+  ]);
+  checkedMap = todayChecked;
   subscribeStructure(tab);
   subscribeChecks(tab);
   updateUndoBtn();
@@ -1626,7 +1640,7 @@ async function loadTab(tab){
 async function loadViewDateAssignees(day){
   if(!firebaseReady){ viewDateAssignees = []; return; }
   try{
-    const snap = await calendarCol().doc(day).get();
+    const snap = await withDbTimeout(calendarCol().doc(day).get(), "viewDateAssignees-get-timeout");
     viewDateAssignees = (snap.exists && Array.isArray(snap.data().people)) ? snap.data().people : [];
   }catch(e){ viewDateAssignees = []; }
 }
@@ -2385,7 +2399,7 @@ let adminPasswordCurrent = ADMIN_PASSWORD;
 function adminAuthRef(){ return db.collection("duty_settings").doc("adminAuth"); }
 async function loadAdminPassword(){
   try{
-    const snap = await adminAuthRef().get();
+    const snap = await withDbTimeout(adminAuthRef().get(), "adminAuth-get-timeout");
     if(snap.exists && typeof snap.data().password==="string" && snap.data().password){
       adminPasswordCurrent = snap.data().password;
     }
@@ -2432,7 +2446,7 @@ let restorePasscodeCurrent = RESTORE_PASSCODE_DEFAULT;
 function restoreAuthRef(){ return db.collection("duty_settings").doc("restoreAuth"); }
 async function loadRestorePasscode(){
   try{
-    const snap = await restoreAuthRef().get();
+    const snap = await withDbTimeout(restoreAuthRef().get(), "restoreAuth-get-timeout");
     if(snap.exists && typeof snap.data().passcode==="string" && /^\d{4}$/.test(snap.data().passcode)){
       restorePasscodeCurrent = snap.data().passcode;
     }
@@ -2539,11 +2553,11 @@ let roster = ROSTER_DEFAULT.slice();
 function rosterRef(){ return db.collection("duty_settings").doc("roster"); }
 async function loadRoster(){
   try{
-    const snap = await rosterRef().get();
+    const snap = await withDbTimeout(rosterRef().get(), "roster-get-timeout");
     if(snap.exists && Array.isArray(snap.data().names) && snap.data().names.length){
       roster = snap.data().names;
     }else{
-      await rosterRef().set({ names: roster });
+      await withDbTimeout(rosterRef().set({ names: roster }), "roster-set-timeout");
     }
   }catch(e){ /* オフライン時などはデフォルトのまま */ }
 }
@@ -2660,7 +2674,7 @@ let fiscalEndYear = 2001;    // 期間の長さを計算するための基準値
 function fiscalSettingsRef(){ return db.collection("duty_settings").doc("fiscal"); }
 async function loadFiscalSettings(){
   try{
-    const snap = await fiscalSettingsRef().get();
+    const snap = await withDbTimeout(fiscalSettingsRef().get(), "fiscalSettings-get-timeout");
     const data = snap.exists ? snap.data() : null;
     if(data && typeof data.startMonth==="number"){
       fiscalStartMonth = data.startMonth;
@@ -2680,12 +2694,12 @@ async function loadFiscalSettings(){
 }
 async function saveFiscalSettings(){
   try{
-    await fiscalSettingsRef().set({
+    await withDbTimeout(fiscalSettingsRef().set({
       startMonth: fiscalStartMonth,
       startYear: fiscalStartYear,
       endMonth: fiscalEndMonth,
       endYear: fiscalEndYear
-    });
+    }), "fiscalSettings-set-timeout");
   }catch(e){ toastFail("年度設定の保存", e); }
 }
 
@@ -2714,7 +2728,7 @@ function addMonthsYM(year, month, delta){
 function fiscalPresetsRef(){ return db.collection("duty_settings").doc("fiscalPresets"); }
 async function loadFiscalPresets(){
   try{
-    const snap = await fiscalPresetsRef().get();
+    const snap = await withDbTimeout(fiscalPresetsRef().get(), "fiscalPresets-get-timeout");
     if(snap.exists && Array.isArray(snap.data().list) && snap.data().list.length){
       fiscalPresets = snap.data().list;
     }else{
@@ -2725,7 +2739,7 @@ async function loadFiscalPresets(){
   }catch(e){ /* オフライン時は空のまま */ }
 }
 async function saveFiscalPresets(){
-  try{ await fiscalPresetsRef().set({ list: fiscalPresets }); }
+  try{ await withDbTimeout(fiscalPresetsRef().set({ list: fiscalPresets }), "fiscalPresets-set-timeout"); }
   catch(e){ toastFail("集計期間の保存", e); }
 }
 function periodLabelFor(p){ return `${p.startYear}年${p.startMonth}月〜${p.endYear}年${p.endMonth}月`; }
@@ -2977,7 +2991,7 @@ let specialDates = {}; // { "YYYY-MM-DD": {custom:bool, points:number, label:str
 function specialDatesCol(){ return db.collection("special_dates"); }
 async function loadSpecialDates(){
   try{
-    const snap = await specialDatesCol().get();
+    const snap = await withDbTimeout(specialDatesCol().get(), "specialDates-get-timeout");
     const map={};
     snap.forEach(doc=>{ map[doc.id]=doc.data(); });
     specialDates = map;
@@ -3010,11 +3024,11 @@ let prefDeadline = null; // { date:"YYYY-MM-DD", time:"HH:MM"|null } | null(未�
 function prefDeadlineRef(){ return db.collection("duty_settings").doc("prefDeadline"); }
 async function loadPrefDeadline(){
   try{
-    const snap = await prefDeadlineRef().get();
+    const snap = await withDbTimeout(prefDeadlineRef().get(), "prefDeadline-get-timeout");
     const loaded = (snap.exists && snap.data() && snap.data().date) ? { date: snap.data().date, time: snap.data().time || null } : null;
     if(loaded && new Date(loaded.date + "T" + (loaded.time || "23:59") + ":00") <= new Date()){
       // 締切を過ぎているものは自動解除(次に管理者が設定するまで常に受付中に戻す)
-      try{ await prefDeadlineRef().delete(); }catch(e){}
+      try{ await withDbTimeout(prefDeadlineRef().delete(), "prefDeadline-delete-timeout"); }catch(e){}
       prefDeadline = null;
     }else{
       prefDeadline = loaded;
