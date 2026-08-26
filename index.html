@@ -1028,7 +1028,15 @@ async function initFirebase(){
       firebase.appCheck().activate(RECAPTCHA_V3_SITE_KEY, true);
     }
     db = firebase.firestore();
-    try{ db.enablePersistence({ synchronizeTabs:true }); }catch(e){ /* 複数タブ or 非対応ブラウザは無視 */ }
+    // enablePersistence（IndexedDBへのオフライン永続化）は意図的に無効化している。
+    // SafariのIndexedDB実装には、初回アクセス時やバックグラウンド復帰時に
+    // open()やトランザクションのPromiseが解決も失敗もせず永久にハングする
+    // 既知の不具合があり(WebKit側で長年未修正)、Firestoreの永続化機能は
+    // これに直撃しやすい。ラボ内ツールとして常時オンライン運用が前提であり、
+    // オフラインでの前回データ閲覧やタブ間状態共有は実運用上ほぼ不要なため、
+    // このバグの主要な発生源を減らす目的で無効化する。
+    // （インメモリキャッシュ自体はenablePersistenceなしでも有効なので、
+    //   オンライン時の通常動作・速度には影響しない）
     // Authの既定の永続化(indexedDB)がiOS Safariでハングすることがあるため、
     // localStorageベースの永続化に切り替えてから匿名ログインする。
     // これ自体が失敗しても致命的ではないので握りつぶして続行する。
