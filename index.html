@@ -1009,6 +1009,15 @@ async function initFirebase(){
       firebase.appCheck().activate(RECAPTCHA_V3_SITE_KEY, true);
     }
     db = firebase.firestore();
+    // 特定のiOSバージョンで、Firestoreのストリーミング通信(WebChannel)が
+    // 単発で詰まる症状への対策。THEMIS側の検証で有効性を確認済み。
+    // 上のIndexedDB対策とは別レイヤー（こちらは通信方式）なので、
+    // 併用しても副作用はない想定。
+    try {
+      db.settings({ experimentalForceLongPolling: true, merge: true });
+    } catch (e) {
+      console.warn("Firestore settings(long polling)適用に失敗:", e);
+    }
     try{ db.enablePersistence({ synchronizeTabs:true }); }catch(e){ /* 複数タブ or 非対応ブラウザは無視 */ }
     // Authの既定の永続化(indexedDB)がiOS Safariでハングすることがあるため、
     // localStorageベースの永続化に切り替えてから匿名ログインする。
