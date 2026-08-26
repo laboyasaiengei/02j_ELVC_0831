@@ -373,6 +373,21 @@
   }
   @keyframes app-loading-spin{ to{ transform:rotate(360deg); } }
   .app-loading-text{ font-family:"Zen Maru Gothic",sans-serif; font-size:13px; color:var(--ink-soft); }
+  /* 今どの段階の読み込みをしているかを示す小さな補足テキスト（例：Firebaseに接続中…） */
+  .app-loading-step{ font-size:11px; color:var(--ink-soft); opacity:.75; margin-top:-6px; min-height:14px; }
+
+  /* 読み込みが既定時間を超えて止まった場合に、スピナーの代わりに表示するエラー画面 */
+  .app-loading-error{
+    display:flex; flex-direction:column; align-items:center; gap:10px;
+    max-width:300px; text-align:center; padding:0 22px;
+  }
+  .app-loading-error-title{ font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:14.5px; color:var(--ink); }
+  .app-loading-error-detail{ font-size:12px; color:var(--ink-soft); line-height:1.7; white-space:pre-wrap; }
+  .app-loading-retry-btn{
+    margin-top:6px; border:none; background:var(--soil-900); color:#fff;
+    border-radius:999px; padding:11px 26px; font-size:13.5px; font-weight:700; cursor:pointer;
+    font-family:"Noto Sans JP",sans-serif;
+  }
 
   .modal-overlay{
     position:fixed; inset:0; background:rgba(35,50,39,.45); z-index:70;
@@ -647,8 +662,14 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 <div id="themeCurtain" class="theme-curtain"></div>
 
 <div class="app-loading-overlay" id="appLoadingOverlay">
-  <div class="app-loading-spinner"></div>
-  <div class="app-loading-text">読み込み中…</div>
+  <div class="app-loading-spinner" id="appLoadingSpinner"></div>
+  <div class="app-loading-text" id="appLoadingText">読み込み中…</div>
+  <div class="app-loading-step" id="appLoadingStep"></div>
+  <div class="app-loading-error" id="appLoadingErrorBox" style="display:none;">
+    <div class="app-loading-error-title">読み込みに時間がかかっています</div>
+    <div class="app-loading-error-detail" id="appLoadingErrorDetail"></div>
+    <button type="button" class="app-loading-retry-btn" id="appLoadingRetryBtn">再読み込みする</button>
+  </div>
 </div>
 
 <header class="top">
@@ -956,12 +977,24 @@ function withTimeout(promise, ms, tag){
   ]);
 }
 
+/* ---------- 起動時の読み込み進捗表示 ---------- */
+// 「今どの段階か」を画面下部の小さなテキストに出すだけでなく、
+// ウォッチドッグが「どこで止まったか」を報告する時にも使えるよう
+// 直近の段階名を変数にも保持しておく。
+let currentLoadingStepLabel = "起動中…";
+function setLoadingStep(label){
+  currentLoadingStepLabel = label;
+  const el = document.getElementById("appLoadingStep");
+  if(el) el.textContent = label;
+}
+
 async function initFirebase(){
   if(isConfigPlaceholder()){
     showConfigBanner();
     return;
   }
   try{
+    setLoadingStep("Firebaseに接続中…");
     firebase.initializeApp(firebaseConfig);
     if(RECAPTCHA_V3_SITE_KEY && RECAPTCHA_V3_SITE_KEY !== "YOUR_RECAPTCHA_V3_SITE_KEY"){
       firebase.appCheck().activate(RECAPTCHA_V3_SITE_KEY, true);
@@ -972,6 +1005,7 @@ async function initFirebase(){
     // localStorageベースの永続化に切り替えてから匿名ログインする。
     // これ自体が失敗しても致命的ではないので握りつぶして続行する。
     try{ await withTimeout(firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL), 3000, "persistence-timeout"); }catch(e){ /* 失敗しても続行 */ }
+    setLoadingStep("ログイン中…");
     await withTimeout(new Promise((resolve, reject)=>{
       firebase.auth().onAuthStateChanged(user=>{
         if(user){ resolve(); }
@@ -4020,7 +4054,7 @@ document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
 });
 
 /* ---------- init ---------- */
-(async function init(){
+(function(){
   // 読み込みが一瞬で終わるとオーバーレイが表示された直後に消え、
   // 画面が「チラッ」と点滅して見える。最低表示時間を設けて滑らかにする。
   const OVERLAY_MIN_MS = 350;
@@ -4028,40 +4062,95 @@ document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
   // IndexedDBがまれに開かないまま固まり、initFirebase()やその後のFirestore
   // 読み込みが永久に解決しないことがある(WebKit側の既知不具合)。
   // 個々の待ち受けにタイムアウトを入れていても想定外の箇所で固まる可能性は
-  // 残るため、起動シーケンス全体にも上限を設け、これを超えたら強制的に
-  // 読み込み中表示を終了させて「ずっとくるくる回ったまま」を防ぐ。
+  // 残るため、起動シーケンス全体にも上限を設け、これを超えたら
+  // 「今どこで止まったか」を表示しつつ、1回だけ自動で静かにやり直す。
+  // それでもダメならユーザーに再読み込みを促す画面に切り替える。
   const OVERLAY_HARD_TIMEOUT_MS = 15000;
+  const MAX_ATTEMPTS = 2;
   const overlayShownAt = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
-  let watchdogFired = false;
+
+  const spinnerEl = document.getElementById("appLoadingSpinner");
+  const textEl = document.getElementById("appLoadingText");
+  const stepEl = document.getElementById("appLoadingStep");
+  const errorBox = document.getElementById("appLoadingErrorBox");
+  const errorDetailEl = document.getElementById("appLoadingErrorDetail");
+  const retryBtn = document.getElementById("appLoadingRetryBtn");
+  if(retryBtn) retryBtn.addEventListener("click", ()=> window.location.reload());
+
   const hideOverlayNow = ()=>{
     const overlay = document.getElementById("appLoadingOverlay");
     if(overlay) overlay.classList.add("hide");
   };
-  const watchdog = setTimeout(()=>{
-    watchdogFired = true;
-    hideOverlayNow();
-    showToast("読み込みに時間がかかっています。通信状況をご確認のうえ再読み込みしてください");
-  }, OVERLAY_HARD_TIMEOUT_MS);
-  try{
-    await initFirebase();
-    setupConnectionBanner();
-    // loadFiscalPresetsはloadFiscalSettingsの結果(移行処理)に依存するため、
-    // それ以外の読み込みと一緒に並列化して待ち時間を短縮する
-    await Promise.all([loadRoster(), loadSpecialDates(), loadAdminPassword(), loadRestorePasscode(), loadFiscalSettings(), loadPrefDeadline()]);
-    await loadFiscalPresets();
-    await loadTab(currentTab);
-    render();
-  }catch(e){
-    // 何が起きても読み込み中表示だけは残さないようにする
-    showToast("読み込み中にエラーが発生しました。再読み込みしてください");
-  }finally{
-    clearTimeout(watchdog);
-    if(!watchdogFired){
+  // スピナー表示の代わりに「読み込みに失敗した」ことと、止まった段階を表示する。
+  // ここに来た時点で読み込み中表示は消さず、再読み込みボタンだけで先に進めるようにする。
+  const showLoadingErrorScreen = (stepLabel)=>{
+    if(spinnerEl) spinnerEl.style.display = "none";
+    if(textEl) textEl.style.display = "none";
+    if(stepEl) stepEl.style.display = "none";
+    if(errorBox) errorBox.style.display = "flex";
+    if(errorDetailEl){
+      errorDetailEl.textContent =
+        `「${stepLabel}」の段階で読み込みが完了しませんでした。\n電波の良い場所で再読み込みをお試しください。`;
+    }
+  };
+
+  function attemptInit(attempt){
+    let settled = false; // このattemptが完了 or ウォッチドッグ発火 のどちらかを経たら true
+    const watchdog = setTimeout(()=>{
+      if(settled) return;
+      settled = true;
+      console.error(`起動タイムアウト(${attempt}回目): 「${currentLoadingStepLabel}」の段階で既定時間内に完了しませんでした`);
+      if(attempt < MAX_ATTEMPTS){
+        // 1回目の詰まりは自動で静かにやり直す（この不具合は一時的なことが多いため）
+        attemptInit(attempt + 1);
+      }else{
+        showLoadingErrorScreen(currentLoadingStepLabel);
+      }
+    }, OVERLAY_HARD_TIMEOUT_MS);
+
+    const attemptTag = attempt > 1 ? `（${attempt}回目）` : "";
+
+    (async ()=>{
+      try{
+        setLoadingStep("Firebaseに接続中…" + attemptTag);
+        await initFirebase();
+        if(settled) return;
+        setupConnectionBanner();
+        setLoadingStep("各種データを読み込み中…" + attemptTag);
+        // loadFiscalPresetsはloadFiscalSettingsの結果(移行処理)に依存するため、
+        // それ以外の読み込みと一緒に並列化して待ち時間を短縮する
+        await Promise.all([loadRoster(), loadSpecialDates(), loadAdminPassword(), loadRestorePasscode(), loadFiscalSettings(), loadPrefDeadline()]);
+        if(settled) return;
+        await loadFiscalPresets();
+        if(settled) return;
+        setLoadingStep("画面を準備中…" + attemptTag);
+        await loadTab(currentTab);
+        if(settled) return;
+        render();
+      }catch(e){
+        // 何が起きても読み込み中表示だけは残さないようにする
+        // （ウォッチドッグと違い、こちらは「エラーで即終了」のケースなので
+        //   毎回自動リトライはせず、従来通りトーストで知らせて表に進む）
+        if(!settled){
+          settled = true;
+          clearTimeout(watchdog);
+          console.error("起動処理でエラー:", e);
+          showToast("読み込み中にエラーが発生しました。再読み込みしてください");
+          const elapsed = ((typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now()) - overlayShownAt;
+          setTimeout(hideOverlayNow, Math.max(0, OVERLAY_MIN_MS - elapsed));
+        }
+        return;
+      }
+      if(settled) return; // すでにウォッチドッグ側でエラー画面表示済み
+      settled = true;
+      clearTimeout(watchdog);
       const elapsed = ((typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now()) - overlayShownAt;
       const remaining = Math.max(0, OVERLAY_MIN_MS - elapsed);
       setTimeout(hideOverlayNow, remaining);
-    }
+    })();
   }
+
+  attemptInit(1);
 })();
 </script>
 </html>
