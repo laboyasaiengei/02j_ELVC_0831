@@ -169,6 +169,19 @@
   .conn-banner.show{display:flex;}
   .conn-dot{width:7px; height:7px; border-radius:50%; background:var(--alert); flex:0 0 auto;}
 
+  /* ---- キャッシュ表示中バナー(通信不可時、最後に保存できた内容を表示している旨) ---- */
+  .cache-banner{
+    display:none; align-items:center; gap:8px; flex-wrap:wrap;
+    font-size:11.5px; color:#ffe6d6; background:rgba(193,97,63,.22);
+    border:1px solid rgba(193,97,63,.4); border-radius:10px;
+    padding:7px 10px; margin-top:10px;
+  }
+  .cache-banner.show{display:flex;}
+  .cache-banner button{
+    border:1px solid rgba(255,230,214,.5); background:transparent; color:#ffe6d6;
+    font-size:11px; border-radius:6px; padding:3px 8px; cursor:pointer; flex:0 0 auto;
+  }
+
   main{padding:12px 16px 16px; max-width:640px; margin:0 auto;}
 
   /* ---- 過去記録閲覧中バナー ---- */
@@ -727,6 +740,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
   </div>
 
   <div class="conn-banner" id="connBanner"><span class="conn-dot"></span><span id="connBannerText">オフラインです。通信が回復すると自動的に同期されます</span></div>
+  <div class="cache-banner" id="cacheBanner"><span class="conn-dot"></span><span id="cacheBannerText"></span><button id="cacheRetryBtn" onclick="retryLoadCurrentTab()">再読み込み</button></div>
 </header>
 
 <main id="main"></main>
@@ -1347,6 +1361,51 @@ let unsubChecks = null;
 // 完了時に最新世代でなければ描画・購読をスキップする）。
 let loadTabGeneration = 0;
 
+// 通信が完全に落ちている（Firestoreの取得が繰り返し失敗する）ときに、
+// 「真っ白/エラーだけで何も見えない」状態を避けるための保険。
+// 直近に正常取得できた構成データ・本日のチェック状態をlocalStorageに
+// 控えておき、取得に失敗した際はこれを表示にフォールバックさせる。
+// （IndexedDBは既知のハング不具合の主因のため使わず、同期APIで
+//   ハングし得ないlocalStorageのみを使う）
+const LOCAL_CACHE_PREFIX = "atlasCache_v1_";
+function localCacheSet(key, value){
+  try{ localStorage.setItem(LOCAL_CACHE_PREFIX + key, JSON.stringify({ v: value, savedAt: new Date().toISOString() })); }
+  catch(e){ /* 保存できなくても致命的ではないので無視（容量超過・プライベートモード等） */ }
+}
+function localCacheGet(key){
+  try{
+    const raw = localStorage.getItem(LOCAL_CACHE_PREFIX + key);
+    if(!raw) return null;
+    return JSON.parse(raw); // { v, savedAt }
+  }catch(e){ return null; }
+}
+
+// 現在表示中のタブが「取得失敗によりキャッシュ表示になっている」かどうかの状態。
+// { structureSavedAt, checksSavedAt } のいずれかがセットされていればキャッシュ表示中。
+let cacheFallback = {};
+
+function formatSavedAt(iso){
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return "";
+  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
+function updateCacheBanner(){
+  const banner = document.getElementById("cacheBanner");
+  const text = document.getElementById("cacheBannerText");
+  const info = cacheFallback[currentTab];
+  if(info && (info.structureSavedAt || info.checksSavedAt)){
+    const savedAt = info.structureSavedAt || info.checksSavedAt;
+    text.textContent = `通信できないため、${formatSavedAt(savedAt)}時点の保存データを表示しています（最新ではない可能性があります）`;
+    banner.classList.add("show");
+  }else{
+    banner.classList.remove("show");
+  }
+}
+// バナーの「再読み込み」ボタンから呼ばれる。手動で現在のタブの再取得を試みる。
+async function retryLoadCurrentTab(){
+  await loadTab(currentTab);
+}
+
 function isHistoryMode(){ return viewDate !== todayStr; }
 
 function isPlaceholderStructure(sections){
@@ -1391,6 +1450,9 @@ async function ensureStructureLoaded(tab){
       }
       structures[tab] = loaded;
       if(tab==="hiru"){ await applyHiruContentFixV2(); }
+      localCacheSet("structure_"+tab, structures[tab]);
+      cacheFallback[tab] = cacheFallback[tab] || {};
+      cacheFallback[tab].structureSavedAt = null;
       return structures[tab];
     }
     // ここに来るのは snap.exists===false の場合のみ（＝そのタブがまだ一度も
@@ -1398,16 +1460,28 @@ async function ensureStructureLoaded(tab){
     const seeded = withIds(INITIAL_DATA[tab].sections);
     structures[tab] = seeded;
     await saveStructure(tab);
+    localCacheSet("structure_"+tab, structures[tab]);
+    cacheFallback[tab] = cacheFallback[tab] || {};
+    cacheFallback[tab].structureSavedAt = null;
     return seeded;
   }catch(e){
     // 【重要】取得(get)自体が失敗/タイムアウトした場合は、絶対に初期データで
     // 上書き保存してはいけない。実際のデータがあるのに読めなかっただけの
     // 可能性が高く、ここで書き込むと本物のデータを消してしまう。
     // 既にメモリ上に前回分のデータがあればそれを維持し、無ければ
-    // 「保存はせず」表示だけ初期データにして、次に正常に読めた時に
-    // 正しいデータへ復旧できるようにする。
+    // ローカルに控えておいた直近の正常取得データがないか確認する
+    // （完全に通信不能でも、最後に見えていた内容がゼロから何も
+    //   見えなくなる事態を避けるため）。それも無ければ初期データを
+    // 表示だけする（保存はしない）。
     connErrFail("栽培管理データの取得", e);
     if(structures[tab]) return structures[tab];
+    const cached = localCacheGet("structure_"+tab);
+    if(cached && cached.v){
+      structures[tab] = cached.v;
+      cacheFallback[tab] = cacheFallback[tab] || {};
+      cacheFallback[tab].structureSavedAt = cached.savedAt;
+      return structures[tab];
+    }
     return withIds(INITIAL_DATA[tab].sections);
   }
 }
@@ -1590,8 +1664,21 @@ async function loadTodayChecks(tab){
   try{
     const snap = await withDbTimeoutRetry(()=>checksRef(tab, todayStr).get(), "todayChecks-get-timeout");
     todayChecked = (snap.exists && snap.data() && snap.data().data) ? snap.data().data : {};
+    localCacheSet("checks_"+tab+"_"+todayStr, todayChecked);
+    cacheFallback[tab] = cacheFallback[tab] || {};
+    cacheFallback[tab].checksSavedAt = null;
   }catch(e){
-    todayChecked = {};
+    // 今日分のキャッシュ（同じ日付キー）があればそれを使う。無ければ
+    // 「未チェック」として表示する（＝古い日の結果を今日のものとして
+    // 誤表示しないよう、日付が違うキャッシュは使わない）。
+    const cached = localCacheGet("checks_"+tab+"_"+todayStr);
+    if(cached && cached.v){
+      todayChecked = cached.v;
+      cacheFallback[tab] = cacheFallback[tab] || {};
+      cacheFallback[tab].checksSavedAt = cached.savedAt;
+    }else{
+      todayChecked = {};
+    }
     flashConnError("本日のチェック状態の取得に失敗しました（" + errDetail(e) + "）");
   }
 }
@@ -1617,6 +1704,8 @@ function subscribeStructure(tab){
     if(snap.metadata.hasPendingWrites) return; // 自分自身の書き込みは無視（二重再描画防止）
     if(snap.exists && snap.data() && snap.data().sections){
       structures[tab] = snap.data().sections;
+      localCacheSet("structure_"+tab, structures[tab]);
+      if(cacheFallback[tab]) cacheFallback[tab].structureSavedAt = null;
       if(tab===currentTab){ render(); updateUndoBtn(); }
     }
   }, (err)=>{
@@ -1629,6 +1718,8 @@ function subscribeChecks(tab){
     if(snap.metadata.hasPendingWrites) return;
     todayChecked = (snap.exists && snap.data() && snap.data().data) ? snap.data().data : {};
     dateStats[todayStr] = (snap.exists && snap.data() && snap.data().stats) ? snap.data().stats : countStats(tab, todayChecked);
+    localCacheSet("checks_"+tab+"_"+todayStr, todayChecked);
+    if(cacheFallback[tab]) cacheFallback[tab].checksSavedAt = null;
         if(tab===currentTab && !isHistoryMode()){
       checkedMap = todayChecked;
       render();
@@ -1775,6 +1866,7 @@ function render(){
   if(isConfigPlaceholder()){
     showConfigBanner();
   }
+  updateCacheBanner();
 
   const readOnly = isHistoryMode();
 
