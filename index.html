@@ -985,6 +985,25 @@ const FS_OP_TIMEOUT_MS = 6000;
 function withDbTimeout(promise, tag){
   return withTimeout(promise, FS_OP_TIMEOUT_MS, tag);
 }
+// タブ切り替え時など「失敗すると表示が崩れる/固まる」重要な読み込みは、
+// 1回タイムアウトしただけで諦めず、少し間をおいて1回だけ再試行する。
+// fnは呼び出すたびに新しいPromiseを生成する関数を渡すこと（同じPromiseを
+// 使い回すと再試行の意味がないため）。
+function withDbTimeoutRetry(fn, tag, attempts){
+  attempts = attempts || 2;
+  return (async ()=>{
+    let lastErr;
+    for(let i=1;i<=attempts;i++){
+      try{
+        return await withDbTimeout(fn(), tag);
+      }catch(e){
+        lastErr = e;
+        if(i<attempts) await new Promise(r=>setTimeout(r, 600));
+      }
+    }
+    throw lastErr;
+  })();
+}
 
 /* ---------- 起動時の読み込み進捗表示 ---------- */
 // 「今どの段階か」を画面下部の小さなテキストに出すだけでなく、
@@ -1314,6 +1333,12 @@ const UNDO_LIMIT = 20;
 let unsubStructure = null;
 let unsubChecks = null;
 
+// タブ切り替えのたびに増える世代カウンタ。連打などでloadTab()の呼び出しが
+// 重なった場合に、後から解決した「古い方」の結果が新しい方を上書きしてしまう
+// のを防ぐために使う（各loadTab呼び出しは自分の世代番号を覚えておき、
+// 完了時に最新世代でなければ描画・購読をスキップする）。
+let loadTabGeneration = 0;
+
 function isHistoryMode(){ return viewDate !== todayStr; }
 
 function isPlaceholderStructure(sections){
@@ -1347,7 +1372,7 @@ async function ensureStructureLoaded(tab){
     return structures[tab];
   }
   try{
-    const snap = await withDbTimeout(structureRef(tab).get(), "structure-get-timeout");
+    const snap = await withDbTimeoutRetry(()=>structureRef(tab).get(), "structure-get-timeout");
     if(snap.exists && snap.data() && snap.data().sections){
       let loaded = snap.data().sections;
       if(isPlaceholderStructure(loaded)){
@@ -1555,7 +1580,7 @@ async function pruneOldChecks(tab){
 async function loadTodayChecks(tab){
   if(!firebaseReady){ todayChecked = {}; return; }
   try{
-    const snap = await withDbTimeout(checksRef(tab, todayStr).get(), "todayChecks-get-timeout");
+    const snap = await withDbTimeoutRetry(()=>checksRef(tab, todayStr).get(), "todayChecks-get-timeout");
     todayChecked = (snap.exists && snap.data() && snap.data().data) ? snap.data().data : {};
   }catch(e){
     todayChecked = {};
@@ -1662,24 +1687,55 @@ function downSvg(){
 
 /* ---------- タブ切り替え／初期ロード ---------- */
 async function loadTab(tab){
+  // このタブ読み込みの「世代」を記録。以後、より新しいloadTab呼び出しが
+  // 発生していたら（＝タブを連続でタップした等）、この呼び出しの結果は
+  // 画面に反映しない。
+  const myGen = ++loadTabGeneration;
+
   todayStr = getTodayStr();
   viewDate = todayStr;
   document.getElementById("datePill").textContent = dowLabel();
   unsubscribeAll();
-  // 以下の5つはお互いの結果に依存しないため、直列に待つのではなく並列で走らせる。
-  // 直列だと(タイムアウト保護を入れていても)1つ8秒×5個で最大40秒待ちになり得るが、
-  // 並列なら最も遅い1つ分（最大でも約8秒）で揃う。
-  await Promise.all([
+
+  // すでにこのタブの構成データをメモリ上に持っていれば（前回訪問時や
+  // リアルタイム同期で取得済み）、ネットワーク応答を待たずにまず
+  // それで即座に描画する。タブを行き来するたびに毎回サーバー往復を
+  // 待たされて「反映が遅い」と感じるのを防ぐための対応。
+  // （この後、最新データが届き次第どのみち再描画される）
+  if(structures[tab] && myGen===loadTabGeneration && currentTab===tab){
+    checkedMap = todayChecked;
+    render();
+  }
+
+  // 表示の正しさに直結する2つ（栽培管理の構成・本日のチェック状態）だけを
+  // 待って確定させる。整理処理(prune)・直近日付の統計・当番者の取得は
+  // 表示を止めなくても支障がないため、裏側で並行して走らせ、届き次第
+  // それぞれ再描画する。これにより、タブ切り替え時に待つ通信の数を
+  // 5個→実質2個に減らし、体感速度と、通信混雑によるタイムアウトの
+  // 発生頻度の両方を改善する。
+  const essential = Promise.all([
     ensureStructureLoaded(tab),
-    pruneOldChecks(tab),
     loadTodayChecks(tab),
-    loadViewDateAssignees(viewDate),
-    loadDateStats(tab),
   ]);
+
+  pruneOldChecks(tab); // 結果を待つ必要のない裏方処理（削除のみ）
+  loadDateStats(tab).then(()=>{
+    if(myGen===loadTabGeneration && currentTab===tab) render();
+  });
+  loadViewDateAssignees(viewDate).then(()=>{
+    if(myGen===loadTabGeneration && currentTab===tab) render();
+  });
+
+  await essential;
+  // 待っている間に別のタブへ切り替えられていたら、この呼び出しの結果は
+  // 使わない（古いタブのデータで現在の表示や購読を上書きしないため）。
+  if(myGen !== loadTabGeneration || currentTab!==tab) return;
+
   checkedMap = todayChecked;
   subscribeStructure(tab);
   subscribeChecks(tab);
   updateUndoBtn();
+  render();
 }
 
 /* 日付チップを選択して表示日を切り替える */
@@ -3877,9 +3933,9 @@ async function openKanriboModal(){
   const today = getTodayStr();
   let todayData = null;
   try{
-    const snap = await kanriboCol().doc(today).get();
+    const snap = await withDbTimeout(kanriboCol().doc(today).get(), "kanriboToday-get-timeout");
     todayData = snap.exists ? snap.data() : null;
-  }catch(e){ /* 読み込めなくてもフォームは表示する */ }
+  }catch(e){ /* 読み込めなくてもフォームは表示する（タイムアウトで永久に固まるのを防ぐ） */ }
 
   bodyEl.innerHTML = `
     <div class="log-date-banner">${dowLabel()} の記録</div>
@@ -3937,10 +3993,10 @@ async function loadKanriboHistory(){
   try{
     const oldest = oldestKeptLogDate();
     const today = getTodayStr();
-    const q = await kanriboCol()
+    const q = await withDbTimeout(kanriboCol()
       .where(firebase.firestore.FieldPath.documentId(), ">=", oldest)
       .where(firebase.firestore.FieldPath.documentId(), "<=", today)
-      .get();
+      .get(), "kanriboHistory-get-timeout");
     kanriboRecords = q.docs.map(d=>Object.assign({ date:d.id }, d.data())).sort((a,b)=> a.date < b.date ? 1 : -1);
     kanriboPage = 0;
     renderKanriboHistoryPage();
@@ -3999,9 +4055,9 @@ async function openBaiyoekiModal(){
   let todayData = null;
   if(saturday){
     try{
-      const snap = await baiyoekiCol().doc(getTodayStr()).get();
+      const snap = await withDbTimeout(baiyoekiCol().doc(getTodayStr()).get(), "baiyoekiToday-get-timeout");
       todayData = snap.exists ? snap.data() : null;
-    }catch(e){ /* 読み込めなくてもフォームは表示する */ }
+    }catch(e){ /* 読み込めなくてもフォームは表示する（タイムアウトで永久に固まるのを防ぐ） */ }
   }
 
   const formHtml = saturday ? `
@@ -4061,10 +4117,10 @@ async function loadBaiyoekiHistory(){
   try{
     const oldest = oldestKeptLogDate();
     const today = getTodayStr();
-    const q = await baiyoekiCol()
+    const q = await withDbTimeout(baiyoekiCol()
       .where(firebase.firestore.FieldPath.documentId(), ">=", oldest)
       .where(firebase.firestore.FieldPath.documentId(), "<=", today)
-      .get();
+      .get(), "baiyoekiHistory-get-timeout");
     baiyoekiRecords = q.docs.map(d=>Object.assign({ date:d.id }, d.data())).sort((a,b)=> a.date < b.date ? 1 : -1);
     baiyoekiPage = 0;
     renderBaiyoekiHistoryPage();
