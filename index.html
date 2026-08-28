@@ -509,8 +509,8 @@
   .pref-row.is-past{ background:#f2f0e6; border-color:#e6e1d0; opacity:.68; }
   .pref-row.is-past .pref-day, .pref-row.is-past .pref-label{ color:var(--ink-soft); }
   .pref-row.is-today{ border-color:var(--leaf-500); background:#f1f8ef; box-shadow:0 0 0 1px var(--leaf-500) inset; }
-  .pref-date{ flex:0 0 auto; width:64px; text-align:center; }
-  .pref-day{ font-family:"Zen Maru Gothic",sans-serif; font-weight:800; font-size:14px; color:var(--soil-800); }
+  .pref-date{ flex:0 0 auto; width:70px; text-align:center; }
+  .pref-day{ font-family:"Zen Maru Gothic",sans-serif; font-weight:800; font-size:13px; color:var(--soil-800); white-space:nowrap; }
   .pref-today-dot{ display:inline-block; font-size:9px; font-weight:700; color:var(--leaf-600); background:#dff0dc; border-radius:999px; padding:1px 6px; margin-top:2px; }
   .pref-label{ font-size:10.5px; color:var(--bark); margin-top:2px; }
   .pref-wanters{ flex:1; min-width:0; font-size:12px; color:var(--ink-soft); line-height:1.5; }
@@ -3263,12 +3263,24 @@ let preferences = {}; // { "YYYY-MM-DD": {name:true,...} } 対応可能な人
 let priorities = {};  // { "YYYY-MM-DD": {name:true,...} } 特に希望している人(対応可能な人のみ設定できる)
 function preferencesCol(){ return db.collection("preferences"); }
 async function loadPreferencesRange(dateStrs){
+  if(dateStrs.length === 0) return;
   try{
-    const results = await Promise.all(dateStrs.map(ds=>preferencesCol().doc(ds).get()));
-    results.forEach((snap,i)=>{
-      const data = snap.exists ? snap.data() : {};
-      preferences[dateStrs[i]] = data.wants || {};
-      priorities[dateStrs[i]] = data.priority || {};
+    const sorted = dateStrs.slice().sort();
+    const startId = sorted[0];
+    const endId = sorted[sorted.length-1];
+    const wanted = new Set(dateStrs);
+    const snap = await preferencesCol()
+      .where(firebase.firestore.FieldPath.documentId(), ">=", startId)
+      .where(firebase.firestore.FieldPath.documentId(), "<=", endId)
+      .get();
+    // 範囲内には対象外の日付(当番不要日など)のドキュメントも含まれ得るので、
+    // 先に対象日付を空でリセットしてから、該当するものだけ埋め直す
+    dateStrs.forEach(ds=>{ preferences[ds] = {}; priorities[ds] = {}; });
+    snap.forEach(doc=>{
+      if(!wanted.has(doc.id)) return;
+      const data = doc.data();
+      preferences[doc.id] = data.wants || {};
+      priorities[doc.id] = data.priority || {};
     });
   }catch(e){ /* オフライン時は既存キャッシュのまま */ }
 }
