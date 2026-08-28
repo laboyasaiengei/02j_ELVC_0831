@@ -3292,15 +3292,24 @@ let preferences = {}; // { "YYYY-MM-DD": {name:true,...} } 対応可能な人
 let priorities = {};  // { "YYYY-MM-DD": {name:true,...} } 特に希望している人(対応可能な人のみ設定できる)
 function preferencesCol(){ return db.collection("preferences"); }
 async function loadPreferencesRange(dateStrs){
+  if(dateStrs.length===0) return;
   try{
-    const results = await Promise.all(dateStrs.map(ds=>preferencesCol().doc(ds).get()));
-    results.forEach((snap,i)=>{
-      const data = snap.exists ? snap.data() : {};
-      preferences[dateStrs[i]] = data.wants || {};
-      priorities[dateStrs[i]] = data.priority || {};
+    const sorted = [...dateStrs].sort();
+    const start = sorted[0], end = sorted[sorted.length-1];
+    const snap = await preferencesCol()
+      .where(firebase.firestore.FieldPath.documentId(), ">=", start)
+      .where(firebase.firestore.FieldPath.documentId(), "<=", end)
+      .get();
+    const found = {};
+    snap.forEach(doc=>{ found[doc.id] = doc.data(); });
+    dateStrs.forEach(ds=>{
+      const data = found[ds] || {};
+      preferences[ds] = data.wants || {};
+      priorities[ds] = data.priority || {};
     });
   }catch(e){ /* オフライン時は既存キャッシュのまま */ }
 }
+
 async function togglePreference(dateStr){
   if(!myName){ openNameModal(()=>togglePreference(dateStr)); return; }
   const current = preferences[dateStr] || {};
@@ -3351,16 +3360,25 @@ let calendarChanged = {};  // { "YYYY-MM-DD": true } 当番変更があった日
 let calendarPrevious = {}; // { "YYYY-MM-DD": ["name1",...] } 変更前の担当者
 function calendarCol(){ return db.collection("calendar"); }
 async function loadCalendarRange(dateStrs){
+  if(dateStrs.length===0) return;
   try{
-    const results = await Promise.all(dateStrs.map(ds=>calendarCol().doc(ds).get()));
-    results.forEach((snap,i)=>{
-      const ds = dateStrs[i];
-      calendarAssign[ds] = (snap.exists && Array.isArray(snap.data().people)) ? snap.data().people : [];
-      calendarChanged[ds] = !!(snap.exists && snap.data().changed);
-      calendarPrevious[ds] = (snap.exists && Array.isArray(snap.data().previousPeople)) ? snap.data().previousPeople : [];
+    const sorted = [...dateStrs].sort();
+    const start = sorted[0], end = sorted[sorted.length-1];
+    const snap = await calendarCol()
+      .where(firebase.firestore.FieldPath.documentId(), ">=", start)
+      .where(firebase.firestore.FieldPath.documentId(), "<=", end)
+      .get();
+    const found = {};
+    snap.forEach(doc=>{ found[doc.id] = doc.data(); });
+    dateStrs.forEach(ds=>{
+      const data = found[ds];
+      calendarAssign[ds] = (data && Array.isArray(data.people)) ? data.people : [];
+      calendarChanged[ds] = !!(data && data.changed);
+      calendarPrevious[ds] = (data && Array.isArray(data.previousPeople)) ? data.previousPeople : [];
     });
   }catch(e){ /* オフライン時は既存キャッシュのまま */ }
 }
+
 async function loadAllCalendarForScore(){
   try{
     const snap = await calendarCol().get();
