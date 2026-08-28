@@ -3655,7 +3655,7 @@ async function renderScorePanel(el){
       <thead><tr><th>名前</th><th>回数</th><th>スコア</th></tr></thead>
       <tbody>${rowsHtml || `<tr><td colspan="3" class="empty-note">この期間の当番記録がありません</td></tr>`}</tbody>
     </table>
-    <div class="empty-note">基本は1日1ポイント、お盆や年末年始などはポイントアップします。集計は${currentPeriod ? periodLabelFor(currentPeriod) : "選択した"}の期間で記録されます</div>
+    <div class="empty-note">集計は${currentPeriod ? periodLabelFor(currentPeriod) : "選択した"}の期間で記録されます</div>
   `;
   document.getElementById("adminLockBtn").addEventListener("click", ()=>{
     if(isAdmin) lockAdmin(); else unlockAdmin();
@@ -3838,7 +3838,7 @@ async function renderCalendarPanel(el){
       const people = calendarAssign[ds] || [];
               html += `<div class="cal-cell ${duty?"duty":""}${ds<todayStr?" past":""}${ds===todayStr?" today":""}" data-cal-date="${ds}">
         <div class="cal-num-row"><span class="cal-num">${d.getDate()}</span>${calendarChanged[ds] ? `<span class="cal-change-mark" title="当番変更あり">🔁</span>` : ``}</div>
-        ${duty ? `<div class="cal-label">${escapeHtml(labelForDate(ds))}</div>` : ``}
+        ${duty ? `<div class="cal-label">当番</div>` : ``}
         ${people.length ? `<div class="cal-people">${people.map(name=>`<span class="cal-person">${escapeHtml(name)}</span>`).join("")}</div>` : ``}
       </div>`;
     });
