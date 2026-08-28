@@ -3188,8 +3188,8 @@ function prefDeadlineLabel(){
 }
 
 /* ---- 希望表 ---- */
-let preferences = {}; // { "YYYY-MM-DD": {name:true,...} } 対応可能な人
-let priorities = {};  // { "YYYY-MM-DD": {name:true,...} } 特に希望している人(対応可能な人のみ設定できる)
+let preferences = {}; // { "YYYY-MM-DD": {name:true,...} } 当番
+let priorities = {};  // { "YYYY-MM-DD": {name:true,...} } 特に希望している人(当番のみ設定できる)
 function preferencesCol(){ return db.collection("preferences"); }
 async function loadPreferencesRange(dateStrs){
   if(dateStrs.length === 0) return;
@@ -3655,7 +3655,7 @@ async function renderScorePanel(el){
       <thead><tr><th>名前</th><th>回数</th><th>スコア</th></tr></thead>
       <tbody>${rowsHtml || `<tr><td colspan="3" class="empty-note">この期間の当番記録がありません</td></tr>`}</tbody>
     </table>
-    <div class="empty-note">集計は${currentPeriod ? periodLabelFor(currentPeriod) : "選択した"}の期間で記録されます</div>
+    <div class="empty-note">基本は1日1ポイント、お盆や年末年始などはポイントアップします。集計は${currentPeriod ? periodLabelFor(currentPeriod) : "選択した"}の期間で記録されます</div>
   `;
   document.getElementById("adminLockBtn").addEventListener("click", ()=>{
     if(isAdmin) lockAdmin(); else unlockAdmin();
@@ -3898,7 +3898,7 @@ async function renderCalendarPanel(el){
       const names = Object.keys(wants).filter(n=>wants[n]);
       return `<div class="special-date-row">
         <div class="sd-date">${d.getMonth()+1}/${d.getDate()}(${dow})</div>
-        <div class="sd-label">${escapeHtml(labelForDate(ds))}: ${names.length?escapeHtml(names.join("・")):"対応可能な人がいません"}</div>
+        <div class="sd-label">${escapeHtml(labelForDate(ds))}: ${names.length?escapeHtml(names.join("・")):"当番がいません"}</div>
       </div>`;
     }).join("");
   }else{
@@ -3933,7 +3933,7 @@ async function openCalendarDayModal(ds){
     .map(n=> prio[n] ? `★${escapeHtml(n)}` : escapeHtml(n)).join("・");
   let infoHtml = `<div class="cal-day-info">
     ${duty ? `<b>${escapeHtml(label)}</b>・当番が必要な日(${pts}pt)<br>` : `通常日(当番は不要です)<br>`}
-    対応可能な人: ${wanterNames.length ? wanterNamesHtml : "なし"}
+    当番: ${wanterNames.length ? wanterNamesHtml : "なし"}
     ${calendarChanged[ds] ? `<br>🔁 変更前の担当: ${prevAssigned.length ? escapeHtml(prevAssigned.join("・")) : "なし"}` : ``}
   </div>`;
 
@@ -3953,7 +3953,7 @@ async function openCalendarDayModal(ds){
       (allCal[otherDs]||[]).forEach(name=>{ counts[name]=(counts[name]||0)+1; });
     });
 
-    // この日に対応可能な人・すでに割り当て済みの人だけを候補にする。優先希望の人を先頭に並べる
+    // この日に当番・すでに割り当て済みの人だけを候補にする。優先希望の人を先頭に並べる
     const pickList = roster.filter(n=>wanterNames.includes(n) || assigned.includes(n))
       .sort((a,b)=>(prio[b]?1:0)-(prio[a]?1:0));
 
@@ -3961,7 +3961,7 @@ async function openCalendarDayModal(ds){
       <div class="roster-check-row">
         <input type="checkbox" id="calpick-${n}" ${assigned.includes(n)?"checked":""}>
         <label for="calpick-${n}">${escapeHtml(n)}<span class="roster-count-circle" title="累計担当回数">${circledNumber(counts[n]||0)}</span>${prio[n]?" ★優先希望":(wanterNames.includes(n)?" (対応可能)":"")}</label>
-      </div>`).join("") : `<div class="empty-note">この日に対応可能な人がいません</div>`;
+      </div>`).join("") : `<div class="empty-note">この日に当番がいません</div>`;
     infoHtml += `
       <label class="roster-check-row" for="calChangeMark" style="margin-top:10px; border-top:1px solid var(--line);">
         <input type="checkbox" id="calChangeMark" ${calendarChanged[ds]?"checked":""}>
