@@ -3246,11 +3246,18 @@ async function togglePreference(dateStr){
       }else{
         wants[myName] = true;
       }
-      tx.set(ref, {
+      const saved = {
         wants,
         priority,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge:true });
+      };
+      // merge:true で map を保存すると、削除した名前が Firestore 側に残ることがある。
+      // 既存ドキュメントでは wants / priority の map 自体を置換して、削除を確実に反映する。
+      if(snap.exists){
+        tx.update(ref, saved);
+      }else{
+        tx.set(ref, saved);
+      }
     }), "preferenceToggle-transaction-timeout");
   }catch(e){
     // 保存失敗時だけ元の表示へ戻す。
