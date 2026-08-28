@@ -1335,6 +1335,10 @@ function diffStructures(current, backup){
 let currentTab = "asa";
 let structures = {};      // tab -> sections[]
 let todayChecked = {};    // 今日分のチェック(リアルタイム同期される実データ)
+// タブ別の直近チェック状態をメモリに保持する。
+// iOS/iPadOS では Firestore/IndexedDB の応答が遅れることがあるため、
+// タブ再訪時は通信を待たずこのキャッシュを即表示し、購読で後から最新化する。
+let todayCheckedCache = { asa:null, hiru:null, yugata:null };
 let checkedMap = {};      // 現在画面に表示中のチェック(今日 or 過去の記録)
 let openSections = {};
 let editMode = false;
@@ -1520,6 +1524,7 @@ function sleep(ms){ return new Promise(resolve=>setTimeout(resolve, ms)); }
           updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
         todayChecked = updated;
+        todayCheckedCache[tab] = todayChecked;
         dateStats[todayStr] = stats;
       });
       scheduleAutoBackup(tab);
@@ -1593,12 +1598,18 @@ async function pruneOldChecks(tab){
 
 /* ---------- チェックの読み込み ---------- */
 async function loadTodayChecks(tab){
-  if(!firebaseReady){ todayChecked = {}; return; }
+  if(!firebaseReady){
+    todayChecked = todayCheckedCache[tab] || {};
+    todayCheckedCache[tab] = todayChecked;
+    return;
+  }
   try{
     const snap = await withDbTimeoutRetry(()=>checksRef(tab, todayStr).get(), "todayChecks-get-timeout");
     todayChecked = (snap.exists && snap.data() && snap.data().data) ? snap.data().data : {};
+    todayCheckedCache[tab] = todayChecked;
   }catch(e){
-    todayChecked = {};
+    // 取得に失敗しても、以前取得済みの状態があれば消さずに表示を維持する。
+    todayChecked = todayCheckedCache[tab] || {};
     flashConnError("本日のチェック状態の取得に失敗しました（" + errDetail(e) + "）");
   }
 }
@@ -1635,6 +1646,7 @@ function subscribeChecks(tab){
   unsubChecks = checksRef(tab, todayStr).onSnapshot((snap)=>{
     if(snap.metadata.hasPendingWrites) return;
     todayChecked = (snap.exists && snap.data() && snap.data().data) ? snap.data().data : {};
+    todayCheckedCache[tab] = todayChecked;
     dateStats[todayStr] = (snap.exists && snap.data() && snap.data().stats) ? snap.data().stats : countStats(tab, todayChecked);
         if(tab===currentTab && !isHistoryMode()){
       checkedMap = todayChecked;
@@ -1665,6 +1677,7 @@ async function undo(){
   const prev = stack.pop();
   structures[currentTab] = prev.structure;
   todayChecked = prev.checks;
+  todayCheckedCache[currentTab] = todayChecked;
   checkedMap = todayChecked;
   await saveStructure(currentTab);
   await saveChecks(currentTab);
@@ -1712,26 +1725,22 @@ async function loadTab(tab){
   document.getElementById("datePill").textContent = dowLabel();
   unsubscribeAll();
 
-  // すでにこのタブの構成データをメモリ上に持っていれば（前回訪問時や
-  // リアルタイム同期で取得済み）、ネットワーク応答を待たずにまず
-  // それで即座に描画する。タブを行き来するたびに毎回サーバー往復を
-  // 待たされて「反映が遅い」と感じるのを防ぐための対応。
-  // （この後、最新データが届き次第どのみち再描画される）
-  if(structures[tab] && myGen===loadTabGeneration && currentTab===tab){
+  // タブ別キャッシュがある場合は、Firestoreを待たずにその場で切り替える。
+  // 特にiOS/iPadOS 18系では IndexedDB/Firestore のPromise解決が一瞬遅れることが
+  // あるため、「表示切替」と「最新化」を分離してタップの反応を優先する。
+  const hasStructureCache = !!structures[tab];
+  const hasChecksCache = todayCheckedCache[tab] !== null;
+  if(hasChecksCache) todayChecked = todayCheckedCache[tab] || {};
+  if(hasStructureCache && myGen===loadTabGeneration && currentTab===tab){
     checkedMap = todayChecked;
     render();
   }
 
-  // 表示の正しさに直結する2つ（栽培管理の構成・本日のチェック状態）だけを
-  // 待って確定させる。整理処理(prune)・直近日付の統計・当番者の取得は
-  // 表示を止めなくても支障がないため、裏側で並行して走らせ、届き次第
-  // それぞれ再描画する。これにより、タブ切り替え時に待つ通信の数を
-  // 5個→実質2個に減らし、体感速度と、通信混雑によるタイムアウトの
-  // 発生頻度の両方を改善する。
-  const essential = Promise.all([
-    ensureStructureLoaded(tab),
-    loadTodayChecks(tab),
-  ]);
+  // 初回だけget()を待つ。再訪時は既存キャッシュを使い、onSnapshotで最新化する。
+  const essentialJobs = [];
+  if(!hasStructureCache) essentialJobs.push(ensureStructureLoaded(tab));
+  if(!hasChecksCache) essentialJobs.push(loadTodayChecks(tab));
+  const essential = Promise.all(essentialJobs);
 
   pruneOldChecks(tab); // 結果を待つ必要のない裏方処理（削除のみ）
   loadDateStats(tab).then(()=>{
@@ -2474,14 +2483,18 @@ function openDateRefModal(){
 }
 
 /* ---------- events ---------- */
-document.getElementById("tabNav").addEventListener("click", async (e)=>{
+document.getElementById("tabNav").addEventListener("click", (e)=>{
   const btn=e.target.closest("button[data-tab]");
   if(!btn) return;
+  const nextTab = btn.getAttribute("data-tab");
+  if(nextTab===currentTab) return;
   document.querySelectorAll("#tabNav button").forEach(b=>b.classList.remove("active"));
   btn.classList.add("active");
-  currentTab=btn.getAttribute("data-tab");
-  await loadTab(currentTab);
-  render();
+  currentTab = nextTab;
+
+  // 先にボタンのactive表示を1フレーム描画してから重い処理へ進む。
+  // WebKitで「押したのに反応が遅い」ように見えるのを避ける。
+  requestAnimationFrame(()=>{ loadTab(nextTab); });
 });
 document.getElementById("undoBtn").addEventListener("click", ()=>{
   if(!confirm("直前の操作を取り消します。よろしいですか？")) return;
@@ -3202,49 +3215,79 @@ async function loadPreferencesRange(dateStrs){
 }
 async function togglePreference(dateStr){
   if(!myName){ openNameModal(()=>togglePreference(dateStr)); return; }
-  const current = preferences[dateStr] || {};
-  const wasMine = !!current[myName];
-  const next = Object.assign({}, current);
-  if(wasMine) delete next[myName]; else next[myName]=true;
-  preferences[dateStr]=next;
 
-  const patch = {};
-  patch["wants."+myName] = wasMine ? firebase.firestore.FieldValue.delete() : true;
+  const beforeWants = Object.assign({}, preferences[dateStr] || {});
+  const beforePriority = Object.assign({}, priorities[dateStr] || {});
+  const wasMine = !!beforeWants[myName];
 
-  // 対応不可に戻す場合は、優先希望も一緒に外す(対応可能な日にしか優先は付けられないため)
-  const currentPriority = priorities[dateStr] || {};
-  if(wasMine && currentPriority[myName]){
-    const nextPriority = Object.assign({}, currentPriority);
-    delete nextPriority[myName];
-    priorities[dateStr] = nextPriority;
-    patch["priority."+myName] = firebase.firestore.FieldValue.delete();
-  }
+  // まず画面だけ即時反映（通信完了を待たせない）。
+  const optimisticWants = Object.assign({}, beforeWants);
+  if(wasMine) delete optimisticWants[myName]; else optimisticWants[myName] = true;
+  preferences[dateStr] = optimisticWants;
+
+  const optimisticPriority = Object.assign({}, beforePriority);
+  if(wasMine) delete optimisticPriority[myName];
+  priorities[dateStr] = optimisticPriority;
+  renderPrefPanel(document.getElementById("dutyMain"), true);
 
   try{
-    // { merge:true } のみだとキーの削除(delete)が反映されず古い値が残り続けるため、
-    // ドット記法のフィールドパスで対象キーだけを明示的に指定する
-    // withDbTimeoutで包まないと、iOS SafariのIndexedDBハング不具合が起きた際に
-    // このPromiseが永久に解決/拒否されず、ボタンを押しても無反応(エラーも出ない)
-    // ままになってしまう。
-    await withDbTimeout(preferencesCol().doc(dateStr).set(patch, { merge: true }), "preferenceToggle-set-timeout");
-  }catch(e){ toastFail("希望日の保存", e); }
-  renderDutyPanel();
+    const ref = preferencesCol().doc(dateStr);
+    // set() に "wants.名前" のような文字列キーを渡す方式は、set/mergeでは
+    // update()のフィールドパスと同じ意味にならないため使用しない。
+    // トランザクション内で現在のmapを読み、該当ユーザーだけ変更してmapごと保存する。
+    await withDbTimeout(db.runTransaction(async tx=>{
+      const snap = await tx.get(ref);
+      const data = snap.exists && snap.data() ? snap.data() : {};
+      const wants = Object.assign({}, data.wants || {});
+      const priority = Object.assign({}, data.priority || {});
+      if(wasMine){
+        delete wants[myName];
+        delete priority[myName];
+      }else{
+        wants[myName] = true;
+      }
+      tx.set(ref, {
+        wants,
+        priority,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge:true });
+    }), "preferenceToggle-transaction-timeout");
+  }catch(e){
+    // 保存失敗時だけ元の表示へ戻す。
+    preferences[dateStr] = beforeWants;
+    priorities[dateStr] = beforePriority;
+    renderPrefPanel(document.getElementById("dutyMain"), true);
+    toastFail("希望日の保存", e);
+  }
 }
 async function togglePriority(dateStr){
   if(!myName){ openNameModal(()=>togglePriority(dateStr)); return; }
-  if(!(preferences[dateStr] && preferences[dateStr][myName])) return; // 対応可能な日のみ
-  const current = priorities[dateStr] || {};
-  const wasOn = !!current[myName];
-  const next = Object.assign({}, current);
-  if(wasOn) delete next[myName]; else next[myName]=true;
-  priorities[dateStr]=next;
+  if(!(preferences[dateStr] && preferences[dateStr][myName])) return;
+
+  const before = Object.assign({}, priorities[dateStr] || {});
+  const wasOn = !!before[myName];
+  const optimistic = Object.assign({}, before);
+  if(wasOn) delete optimistic[myName]; else optimistic[myName] = true;
+  priorities[dateStr] = optimistic;
+  renderPrefPanel(document.getElementById("dutyMain"), true);
+
   try{
-    await withDbTimeout(preferencesCol().doc(dateStr).set(
-      { ["priority."+myName]: wasOn ? firebase.firestore.FieldValue.delete() : true },
-      { merge: true }
-    ), "priorityToggle-set-timeout");
-  }catch(e){ toastFail("希望日の保存", e); }
-  renderDutyPanel();
+    const ref = preferencesCol().doc(dateStr);
+    await withDbTimeout(db.runTransaction(async tx=>{
+      const snap = await tx.get(ref);
+      const data = snap.exists && snap.data() ? snap.data() : {};
+      const priority = Object.assign({}, data.priority || {});
+      if(wasOn) delete priority[myName]; else priority[myName] = true;
+      tx.set(ref, {
+        priority,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge:true });
+    }), "priorityToggle-transaction-timeout");
+  }catch(e){
+    priorities[dateStr] = before;
+    renderPrefPanel(document.getElementById("dutyMain"), true);
+    toastFail("希望日の保存", e);
+  }
 }
 
 /* ---- カレンダー(実際の当番) ---- */
@@ -3408,14 +3451,14 @@ function prefRowHtml(ds, editable){
       ${rightHtml}
     </div>`;
 }
-async function renderPrefPanel(el){
-  el.innerHTML = `<div class="empty-note">読み込み中…</div>`;
+async function renderPrefPanel(el, skipReload){
+  if(!skipReload) el.innerHTML = `<div class="empty-note">読み込み中…</div>`;
   const now = new Date();
   const thisM = { year: now.getFullYear(), month: now.getMonth() };
   const nextM = { year: now.getMonth()===11 ? now.getFullYear()+1 : now.getFullYear(), month: (now.getMonth()+1)%12 };
   const thisDates = monthDates(thisM.year, thisM.month).list.filter(isDutyDate);
   const nextDates = monthDates(nextM.year, nextM.month).list.filter(isDutyDate);
-  await loadPreferencesRange(thisDates.concat(nextDates));
+  if(!skipReload) await loadPreferencesRange(thisDates.concat(nextDates));
 
   const meBar = `
     <div class="me-bar">
