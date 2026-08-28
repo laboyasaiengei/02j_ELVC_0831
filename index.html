@@ -3216,7 +3216,10 @@ async function togglePreference(dateStr){
   try{
     // { merge:true } のみだとキーの削除(delete)が反映されず古い値が残り続けるため、
     // ドット記法のフィールドパスで対象キーだけを明示的に指定する
-    await preferencesCol().doc(dateStr).set(patch, { merge: true });
+    // withDbTimeoutで包まないと、iOS SafariのIndexedDBハング不具合が起きた際に
+    // このPromiseが永久に解決/拒否されず、ボタンを押しても無反応(エラーも出ない)
+    // ままになってしまう。
+    await withDbTimeout(preferencesCol().doc(dateStr).set(patch, { merge: true }), "preferenceToggle-set-timeout");
   }catch(e){ toastFail("希望日の保存", e); }
   renderDutyPanel();
 }
@@ -3229,10 +3232,10 @@ async function togglePriority(dateStr){
   if(wasOn) delete next[myName]; else next[myName]=true;
   priorities[dateStr]=next;
   try{
-    await preferencesCol().doc(dateStr).set(
+    await withDbTimeout(preferencesCol().doc(dateStr).set(
       { ["priority."+myName]: wasOn ? firebase.firestore.FieldValue.delete() : true },
       { merge: true }
-    );
+    ), "priorityToggle-set-timeout");
   }catch(e){ toastFail("希望日の保存", e); }
   renderDutyPanel();
 }
@@ -3467,7 +3470,7 @@ async function renderPrefPanel(el){
       const current = preferences[ds] || {};
       const next = Object.assign({}, current, { [myName]: true });
       preferences[ds] = next;
-      await preferencesCol().doc(ds).set({ wants: next }, { merge: true });
+      await withDbTimeout(preferencesCol().doc(ds).set({ wants: next }, { merge: true }), "preferenceAllToggle-set-timeout");
     }));
     showToast("全日を対応可能にしました");
     renderPrefPanel(el);
