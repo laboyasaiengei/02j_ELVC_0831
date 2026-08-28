@@ -544,6 +544,19 @@
   .cal-cell .cal-label{ font-size:8px; color:var(--bark); line-height:1.1; margin-top:1px; text-align:center; }
   .cal-cell .cal-people{ font-size:8.5px; color:var(--leaf-600); font-weight:700; line-height:1.2; margin-top:2px; text-align:center; word-break:break-all; }
   .cal-cell .cal-changed{ font-size:7.5px; color:var(--alert); font-weight:700; line-height:1.1; margin-top:1px; text-align:center; }
+
+  /* ---- PDF書き出し(横向きA4)専用のキャプチャ用スタイル ----
+     画面上の通常表示(スマホ幅)には一切影響させず、PDF出力時だけ画面外に複製した
+     要素にこのクラスを付けてセルを大きく描画する。通常画面のCSSは変更していない。 */
+  .pdf-capture-mode{ width:1040px; padding:26px 30px; background:#fff; }
+  .pdf-capture-mode .cal-month-title{ font-size:22px; margin:0 0 16px; }
+  .pdf-capture-mode .cal-grid{ max-width:none; gap:10px; }
+  .pdf-capture-mode .cal-dow{ font-size:15px; padding-bottom:6px; }
+  .pdf-capture-mode .cal-cell{ min-height:112px; border-radius:14px; padding:8px 4px; }
+  .pdf-capture-mode .cal-cell .cal-num{ font-size:20px; }
+  .pdf-capture-mode .cal-cell .cal-label{ font-size:12px; margin-top:3px; }
+  .pdf-capture-mode .cal-cell .cal-people{ font-size:12.5px; margin-top:4px; }
+  .pdf-capture-mode .cal-cell .cal-changed{ font-size:11px; margin-top:2px; }
   .special-date-row{ display:flex; align-items:center; gap:8px; padding:9px 2px; border-bottom:1px solid var(--line); font-size:12.5px; }
   .special-date-row .sd-date{ font-weight:700; color:var(--soil-800); width:78px; flex:0 0 auto; }
   .special-date-row .sd-label{ flex:1; color:var(--ink-soft); min-width:0; }
@@ -1272,27 +1285,43 @@ function circledNumber(n){
   const target = document.getElementById("calMonthBlock"+idx);
   if(!target) return;
   showToast("PDFを作成しています…");
-  const printBtn = target.querySelector("[data-print-month]");
+  let captureHost = null;
   try{
     await loadPdfLibs();
-    if(printBtn) printBtn.style.visibility = "hidden";
-    const canvas = await html2canvas(target, { scale:2, backgroundColor:"#ffffff", useCORS:true });
-    if(printBtn) printBtn.style.visibility = "";
+    // 画面上の表示(スマホ幅)には触れず、PDF専用にオフスクリーンで複製を作り、
+    // そちらだけ.pdf-capture-modeで大きく描画してキャプチャする。
+    // (本体のDOM/表示は一切変更しないため、他の画面への影響はない)
+    const clone = target.cloneNode(true);
+    clone.removeAttribute("id");
+    const printBtnInClone = clone.querySelector("[data-print-month]");
+    if(printBtnInClone) printBtnInClone.remove();
+    captureHost = document.createElement("div");
+    captureHost.className = "pdf-capture-mode";
+    captureHost.style.position = "fixed";
+    captureHost.style.left = "-10000px";
+    captureHost.style.top = "0";
+    captureHost.appendChild(clone);
+    document.body.appendChild(captureHost);
+    const canvas = await html2canvas(captureHost, { scale:2, backgroundColor:"#ffffff", useCORS:true });
     const imgData = canvas.toDataURL("image/png");
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation:"portrait", unit:"pt", format:"a4" });
+    const pdf = new jsPDF({ orientation:"landscape", unit:"pt", format:"a4" });
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const ratio = Math.min(pageWidth/canvas.width, pageHeight/canvas.height);
+    const margin = 24; // 上下左右の余白(pt)
+    const maxW = pageWidth - margin*2;
+    const maxH = pageHeight - margin*2;
+    const ratio = Math.min(maxW/canvas.width, maxH/canvas.height);
     const imgW = canvas.width*ratio;
     const imgH = canvas.height*ratio;
-    pdf.addImage(imgData, "PNG", (pageWidth-imgW)/2, 30, imgW, imgH);
+    pdf.addImage(imgData, "PNG", (pageWidth-imgW)/2, (pageHeight-imgH)/2, imgW, imgH);
     const fileLabel = `${target.dataset.year}年${target.dataset.month}月`;
     pdf.save(`${fileLabel}_当番カレンダー.pdf`);
     showToast("PDFを保存しました");
   }catch(e){
-    if(printBtn) printBtn.style.visibility = "";
     showToast("PDFの作成に失敗しました");
+  }finally{
+    if(captureHost) captureHost.remove();
   }
 }
 /* URLの自動リンク化: HTMLエスケープ後にURLをaタグへ置換 */
