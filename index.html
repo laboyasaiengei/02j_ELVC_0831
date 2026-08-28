@@ -526,12 +526,13 @@
   .cal-cell.past{ opacity:.55; }
   .cal-cell.today{ border:2px solid var(--leaf-600); box-shadow:0 0 0 1px var(--leaf-600) inset; background:var(--leaf-100); }
   .cal-cell.today .cal-num{ color:var(--leaf-600); }
+  .cal-num-row{ display:flex; align-items:center; justify-content:center; gap:2px; min-height:16px; }
   .cal-cell .cal-num{ font-family:"Zen Maru Gothic",sans-serif; font-weight:800; font-size:12.5px; color:var(--soil-800); }
+  .cal-change-mark{ font-size:9px; line-height:1; flex:0 0 auto; }
   .cal-cell.duty .cal-num{ color:var(--alert); }
   .cal-cell .cal-label{ font-size:8px; color:var(--bark); line-height:1.1; margin-top:1px; text-align:center; }
   .cal-cell .cal-people{ font-size:8.5px; color:var(--leaf-600); font-weight:700; line-height:1.25; margin-top:2px; text-align:center; overflow-wrap:anywhere; }
   .cal-cell .cal-person{ display:block; }
-  .cal-cell .cal-changed{ font-size:7.5px; color:var(--alert); font-weight:700; line-height:1.1; margin-top:1px; text-align:center; }
   .special-date-row{ display:flex; align-items:center; gap:8px; padding:9px 2px; border-bottom:1px solid var(--line); font-size:12.5px; }
   .special-date-row .sd-date{ font-weight:700; color:var(--soil-800); width:78px; flex:0 0 auto; }
   .special-date-row .sd-label{ flex:1; color:var(--ink-soft); min-width:0; }
@@ -642,7 +643,6 @@ html[data-theme="dark"] .cal-cell.past .cal-num{ color:#5c655e; }
 html[data-theme="dark"] .cal-cell.past.duty .cal-num{ color:#8a7452; }
 html[data-theme="dark"] .cal-cell.past .cal-label,
 html[data-theme="dark"] .cal-cell.past .cal-people,
-html[data-theme="dark"] .cal-cell.past .cal-changed{ color:#5c655e; }
 html[data-theme="dark"] .cal-dow{ color:#c3cdc0; }
 
 /* 切り替えボタン */
@@ -3356,22 +3356,40 @@ async function purgeDutyDataForPeriod(period){
     await Promise.all(deletions);
   }
 }
-async function saveCalendarDay(dateStr, people){
+async function saveCalendarDay(dateStr, people, markChanged){
   const prevPeople = calendarAssign[dateStr] || [];
-  const isSwap = prevPeople.length>0 &&
+  const prevMarked = !!calendarChanged[dateStr];
+  const prevPrevious = calendarPrevious[dateStr] || [];
+  const assignmentChanged =
     JSON.stringify([...prevPeople].sort()) !== JSON.stringify([...people].sort());
-  calendarAssign[dateStr]=people;
+
+  // 「変更」扱いは担当者が変わったかどうかではなく、管理者がチェックしたかで決める。
+  // これにより入力ミスの修正などを変更履歴として残さずに済む。
+  let previousPeople = [];
+  if(markChanged){
+    if(assignmentChanged) previousPeople = [...prevPeople];
+    else if(prevMarked) previousPeople = [...prevPrevious];
+  }
+
+  calendarAssign[dateStr] = people;
+  calendarChanged[dateStr] = !!markChanged;
+  calendarPrevious[dateStr] = previousPeople;
+
   try{
-    const payload = { people, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
-    if(isSwap){
-      payload.changed = true;
-      payload.previousPeople = prevPeople;
-    }
-    await calendarCol().doc(dateStr).set(payload);
-    calendarChanged[dateStr] = isSwap || !!calendarChanged[dateStr];
-    if(isSwap) calendarPrevious[dateStr] = prevPeople;
-    showToast(isSwap ? "当番を変更しました" : "保存しました");
-  }catch(e){ toastFail("当番割り当ての保存", e); }
+    await calendarCol().doc(dateStr).set({
+      people,
+      changed: !!markChanged,
+      previousPeople,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    showToast(markChanged ? "変更マーク付きで保存しました" : "保存しました");
+  }catch(e){
+    // 保存失敗時は表示上の状態も元に戻す
+    calendarAssign[dateStr] = prevPeople;
+    calendarChanged[dateStr] = prevMarked;
+    calendarPrevious[dateStr] = prevPrevious;
+    toastFail("当番割り当ての保存", e);
+  }
 }
 
 /* ---- 名前選択モーダル ---- */
@@ -3819,10 +3837,9 @@ async function renderCalendarPanel(el){
       const duty = isDutyDate(ds);
       const people = calendarAssign[ds] || [];
               html += `<div class="cal-cell ${duty?"duty":""}${ds<todayStr?" past":""}${ds===todayStr?" today":""}" data-cal-date="${ds}">
-        <div class="cal-num">${d.getDate()}</div>
+        <div class="cal-num-row"><span class="cal-num">${d.getDate()}</span>${calendarChanged[ds] ? `<span class="cal-change-mark" title="当番変更あり">🔁</span>` : ``}</div>
         ${duty ? `<div class="cal-label">${escapeHtml(labelForDate(ds))}</div>` : ``}
         ${people.length ? `<div class="cal-people">${people.map(name=>`<span class="cal-person">${escapeHtml(name)}</span>`).join("")}</div>` : ``}
-        ${calendarChanged[ds] ? `<div class="cal-changed">🔁変更</div>` : ``}
       </div>`;
     });
     html += `</div></div>`;
@@ -3945,12 +3962,18 @@ async function openCalendarDayModal(ds){
         <input type="checkbox" id="calpick-${n}" ${assigned.includes(n)?"checked":""}>
         <label for="calpick-${n}">${escapeHtml(n)}<span class="roster-count-circle" title="累計担当回数">${circledNumber(counts[n]||0)}</span>${prio[n]?" ★優先希望":(wanterNames.includes(n)?" (対応可能)":"")}</label>
       </div>`).join("") : `<div class="empty-note">この日に対応可能な人がいません</div>`;
-    infoHtml += `<button id="calDaySave" style="width:100%; margin-top:12px; border:none; background:var(--leaf-600); color:#fff; border-radius:10px; padding:11px; font-weight:700; cursor:pointer;">この内容で保存</button>`;
+    infoHtml += `
+      <label class="roster-check-row" for="calChangeMark" style="margin-top:10px; border-top:1px solid var(--line);">
+        <input type="checkbox" id="calChangeMark" ${calendarChanged[ds]?"checked":""}>
+        <span>🔁 変更マークを付ける <small style="display:block; color:var(--ink-soft); font-weight:400; margin-top:2px;">正式な当番変更として表示したい場合だけ選択</small></span>
+      </label>
+      <button id="calDaySave" style="width:100%; margin-top:12px; border:none; background:var(--leaf-600); color:#fff; border-radius:10px; padding:11px; font-weight:700; cursor:pointer;">この内容で保存</button>`;
 
     bodyEl.innerHTML = infoHtml;
     document.getElementById("calDaySave").addEventListener("click", async ()=>{
       const picked = pickList.filter(n=>document.getElementById(`calpick-${n}`).checked);
-      await saveCalendarDay(ds, picked);
+      const markChanged = document.getElementById("calChangeMark").checked;
+      await saveCalendarDay(ds, picked, markChanged);
       document.getElementById("calendarDayModal").classList.remove("show");
       renderDutyPanel();
     });
