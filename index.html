@@ -3336,6 +3336,9 @@ function prewarmRangeQuery(){
       .where(firebase.firestore.FieldPath.documentId(), ">=", ds)
       .where(firebase.firestore.FieldPath.documentId(), "<=", ds)
       .get(), "prewarm-range-timeout", 1).catch(()=>{});
+    // スコアタブが使う「フィルタなし全件get()」も範囲クエリとは別種のクエリ形状なので、
+    // 同様にここで一度温めておく(calendarはこの時点でまだ定義前なので db.collection() で直接参照)。
+    withDbTimeoutRetry(()=>db.collection("calendar").limit(1).get(), "prewarm-all-timeout", 1).catch(()=>{});
   }catch(e){ /* 失敗しても無視 */ }
 }
 async function loadPreferencesRange(dateStrs){
@@ -3433,7 +3436,10 @@ async function loadCalendarRange(dateStrs){
 }
 async function loadAllCalendarForScore(){
   try{
-    const snap = await calendarCol().get();
+    // calendarコレクション全件取得は、単純get()・範囲クエリとも異なる第3のクエリ種別
+    // (フィルタなしの全件スキャン)のため、他タブの修正だけではこれは温まらない。
+    // ここも同様にタイムアウト+リトライで保護する。
+    const snap = await withDbTimeoutRetry(()=>calendarCol().get(), "calendarAll-get-timeout");
     const map={};
     snap.forEach(doc=>{ map[doc.id] = Array.isArray(doc.data().people) ? doc.data().people : []; });
     return map;
