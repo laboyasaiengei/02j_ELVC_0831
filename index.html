@@ -3177,11 +3177,13 @@ async function loadPreferencesRange(dateStrs){
     const startId = sorted[0];
     const endId = sorted[sorted.length-1];
     const wanted = new Set(dateStrs);
-    const snap = await preferencesCol()
-      .where(firebase.firestore.FieldPath.documentId(), ">=", startId)
-      .where(firebase.firestore.FieldPath.documentId(), "<=", endId)
-      .get();
-    // 範囲内に対象外の日付のドキュメントが含まれ得るので、まず対象日付を空でリセットしてから埋め直す
+    const snap = await withDbTimeout(
+      preferencesCol()
+        .where(firebase.firestore.FieldPath.documentId(), ">=", startId)
+        .where(firebase.firestore.FieldPath.documentId(), "<=", endId)
+        .get(),
+      "preferencesRange-get-timeout"
+    );
     dateStrs.forEach(ds=>{ preferences[ds] = {}; priorities[ds] = {}; });
     snap.forEach(doc=>{
       if(!wanted.has(doc.id)) return;
@@ -3189,7 +3191,7 @@ async function loadPreferencesRange(dateStrs){
       preferences[doc.id] = data.wants || {};
       priorities[doc.id] = data.priority || {};
     });
-  }catch(e){ /* オフライン時は既存キャッシュのまま */ }
+  }catch(e){ /* オフライン/タイムアウト時は既存キャッシュのまま */ }
 }
 async function togglePreference(dateStr){
   if(!myName){ openNameModal(()=>togglePreference(dateStr)); return; }
@@ -3247,10 +3249,13 @@ async function loadCalendarRange(dateStrs){
     const startId = sorted[0];
     const endId = sorted[sorted.length-1];
     const wanted = new Set(dateStrs);
-    const snap = await calendarCol()
-      .where(firebase.firestore.FieldPath.documentId(), ">=", startId)
-      .where(firebase.firestore.FieldPath.documentId(), "<=", endId)
-      .get();
+    const snap = await withDbTimeout(
+      calendarCol()
+        .where(firebase.firestore.FieldPath.documentId(), ">=", startId)
+        .where(firebase.firestore.FieldPath.documentId(), "<=", endId)
+        .get(),
+      "calendarRange-get-timeout"
+    );
     dateStrs.forEach(ds=>{ calendarAssign[ds] = []; calendarChanged[ds] = false; calendarPrevious[ds] = []; });
     snap.forEach(doc=>{
       if(!wanted.has(doc.id)) return;
@@ -3259,7 +3264,15 @@ async function loadCalendarRange(dateStrs){
       calendarChanged[doc.id] = !!data.changed;
       calendarPrevious[doc.id] = Array.isArray(data.previousPeople) ? data.previousPeople : [];
     });
-  }catch(e){ /* オフライン時は既存キャッシュのまま */ }
+  }catch(e){ /* オフライン/タイムアウト時は既存キャッシュのまま */ }
+}
+async function loadAllCalendarForScore(){
+  try{
+    const snap = await withDbTimeout(calendarCol().get(), "calendarAll-get-timeout");
+    const map={};
+    snap.forEach(doc=>{ map[doc.id] = Array.isArray(doc.data().people) ? doc.data().people : []; });
+    return map;
+  }catch(e){ return calendarAssign; }
 }
 async function loadAllCalendarForScore(){
   try{
