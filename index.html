@@ -3324,12 +3324,25 @@ let preferences = {}; // { "YYYY-MM-DD": {name:true,...} } 対応可能な人
 let priorities = {};  // { "YYYY-MM-DD": {name:true,...} } 特に希望している人(対応可能な人のみ設定できる)
 function preferencesCol(){ return db.collection("preferences"); }
 async function loadPreferencesRange(dateStrs){
+  if(!dateStrs.length) return;
   try{
-    const results = await Promise.all(dateStrs.map(ds=>preferencesCol().doc(ds).get()));
-    results.forEach((snap,i)=>{
-      const data = snap.exists ? snap.data() : {};
-      preferences[dateStrs[i]] = data.wants || {};
-      priorities[dateStrs[i]] = data.priority || {};
+    // 以前は日付ごとに個別のdoc().get()をPromise.allで並列発行していたが、
+    // カレンダー2ヶ月分だと十数〜数十件の同時リクエストになり、iOS18.x系の
+    // Firestore WebChannelがまれに詰まる不具合と重なって画面が固まって見える
+    // 原因になっていた。ドキュメントIDが日付文字列(YYYY-MM-DD)で辞書順=時系列順に
+    // 並ぶ性質を利用し、範囲クエリ1回にまとめてリクエスト数を減らす。
+    const sorted = [...dateStrs].sort();
+    const minDs = sorted[0], maxDs = sorted[sorted.length-1];
+    const q = await withDbTimeoutRetry(()=>preferencesCol()
+      .where(firebase.firestore.FieldPath.documentId(), ">=", minDs)
+      .where(firebase.firestore.FieldPath.documentId(), "<=", maxDs)
+      .get(), "preferencesRange-get-timeout");
+    const found = {};
+    q.forEach(doc=>{ found[doc.id] = doc.data(); });
+    dateStrs.forEach(ds=>{
+      const data = found[ds] || {};
+      preferences[ds] = data.wants || {};
+      priorities[ds] = data.priority || {};
     });
   }catch(e){ /* オフライン時は既存キャッシュのまま */ }
 }
@@ -3383,13 +3396,23 @@ let calendarChanged = {};  // { "YYYY-MM-DD": true } 当番変更があった日
 let calendarPrevious = {}; // { "YYYY-MM-DD": ["name1",...] } 変更前の担当者
 function calendarCol(){ return db.collection("calendar"); }
 async function loadCalendarRange(dateStrs){
+  if(!dateStrs.length) return;
   try{
-    const results = await Promise.all(dateStrs.map(ds=>calendarCol().doc(ds).get()));
-    results.forEach((snap,i)=>{
-      const ds = dateStrs[i];
-      calendarAssign[ds] = (snap.exists && Array.isArray(snap.data().people)) ? snap.data().people : [];
-      calendarChanged[ds] = !!(snap.exists && snap.data().changed);
-      calendarPrevious[ds] = (snap.exists && Array.isArray(snap.data().previousPeople)) ? snap.data().previousPeople : [];
+    // loadPreferencesRangeと同様、個別get()の並列発行をやめて範囲クエリ1回に集約
+    // (iOS18.x系でのWebChannel詰まり対策、詳細は同関数のコメント参照)。
+    const sorted = [...dateStrs].sort();
+    const minDs = sorted[0], maxDs = sorted[sorted.length-1];
+    const q = await withDbTimeoutRetry(()=>calendarCol()
+      .where(firebase.firestore.FieldPath.documentId(), ">=", minDs)
+      .where(firebase.firestore.FieldPath.documentId(), "<=", maxDs)
+      .get(), "calendarRange-get-timeout");
+    const found = {};
+    q.forEach(doc=>{ found[doc.id] = doc.data(); });
+    dateStrs.forEach(ds=>{
+      const data = found[ds];
+      calendarAssign[ds] = (data && Array.isArray(data.people)) ? data.people : [];
+      calendarChanged[ds] = !!(data && data.changed);
+      calendarPrevious[ds] = (data && Array.isArray(data.previousPeople)) ? data.previousPeople : [];
     });
   }catch(e){ /* オフライン時は既存キャッシュのまま */ }
 }
@@ -3852,8 +3875,11 @@ async function renderCalendarPanel(el){
   ];
   let allDates = [];
   months.forEach(m=>{ allDates = allDates.concat(monthDates(m.year, m.month).list); });
-  await loadCalendarRange(allDates);
-  await loadPreferencesRange(allDates.filter(isDutyDate));
+  // 互いに独立した読み込みなので並列化(直列awaitだと待ち時間が単純合算されてしまう)
+  await Promise.all([
+    loadCalendarRange(allDates),
+    loadPreferencesRange(allDates.filter(isDutyDate))
+  ]);
     let html = `<div class="duty-section-title"><span class="title-text">当番カレンダー</span>
     <span class="duty-actions">
       <button class="lock-btn" id="editorLockBtn">${isAdmin?"🔓 管理者モード解除":"🔒 管理者パスワード入力"}</button>
