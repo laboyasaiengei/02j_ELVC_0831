@@ -3323,6 +3323,21 @@ function prefDeadlineLabel(){
 let preferences = {}; // { "YYYY-MM-DD": {name:true,...} } 対応可能な人
 let priorities = {};  // { "YYYY-MM-DD": {name:true,...} } 特に希望している人(対応可能な人のみ設定できる)
 function preferencesCol(){ return db.collection("preferences"); }
+// 起動直後、裏側で「範囲クエリ(documentIdの不等号条件)」を1回だけ軽く投げておく。
+// カレンダー/希望表タブが使うloadCalendarRange/loadPreferencesRangeは通常のget()とは
+// 異なる種類のFirestore通信で、iOS18.x系のWebChannel不具合により「そのクエリ種別を
+// 初めて使う瞬間」にだけ数秒〜十数秒詰まることがある。実際にユーザーが希望表/カレンダー
+// タブを開く前にここで一度温めておくことで、本番の読み込みが詰まらないようにする。
+// 結果自体は使わず、失敗しても無視してよい(本筋の起動処理には影響させない)。
+function prewarmRangeQuery(){
+  try{
+    const ds = getTodayStr();
+    withDbTimeoutRetry(()=>preferencesCol()
+      .where(firebase.firestore.FieldPath.documentId(), ">=", ds)
+      .where(firebase.firestore.FieldPath.documentId(), "<=", ds)
+      .get(), "prewarm-range-timeout", 1).catch(()=>{});
+  }catch(e){ /* 失敗しても無視 */ }
+}
 async function loadPreferencesRange(dateStrs){
   if(!dateStrs.length) return;
   try{
@@ -4419,6 +4434,7 @@ document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
         await initFirebase();
         if(settled) return;
         setupConnectionBanner();
+        prewarmRangeQuery(); // 結果は待たない(裏側でクエリ種別だけ先に温めておく)
         setLoadingStep("各種データを読み込み中…" + attemptTag);
         // loadFiscalPresetsはloadFiscalSettingsの結果(移行処理)に依存するため、
         // それ以外の読み込みと一緒に並列化して待ち時間を短縮する
