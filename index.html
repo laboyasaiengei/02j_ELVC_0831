@@ -169,19 +169,6 @@
   .conn-banner.show{display:flex;}
   .conn-dot{width:7px; height:7px; border-radius:50%; background:var(--alert); flex:0 0 auto;}
 
-  /* ---- キャッシュ表示中バナー(通信不可時、最後に保存できた内容を表示している旨) ---- */
-  .cache-banner{
-    display:none; align-items:center; gap:8px; flex-wrap:wrap;
-    font-size:11.5px; color:#ffe6d6; background:rgba(193,97,63,.22);
-    border:1px solid rgba(193,97,63,.4); border-radius:10px;
-    padding:7px 10px; margin-top:10px;
-  }
-  .cache-banner.show{display:flex;}
-  .cache-banner button{
-    border:1px solid rgba(255,230,214,.5); background:transparent; color:#ffe6d6;
-    font-size:11px; border-radius:6px; padding:3px 8px; cursor:pointer; flex:0 0 auto;
-  }
-
   main{padding:12px 16px 16px; max-width:640px; margin:0 auto;}
 
   /* ---- 過去記録閲覧中バナー ---- */
@@ -509,8 +496,8 @@
   .pref-row.is-past{ background:#f2f0e6; border-color:#e6e1d0; opacity:.68; }
   .pref-row.is-past .pref-day, .pref-row.is-past .pref-label{ color:var(--ink-soft); }
   .pref-row.is-today{ border-color:var(--leaf-500); background:#f1f8ef; box-shadow:0 0 0 1px var(--leaf-500) inset; }
-  .pref-date{ flex:0 0 auto; width:70px; text-align:center; }
-  .pref-day{ font-family:"Zen Maru Gothic",sans-serif; font-weight:800; font-size:13px; color:var(--soil-800); white-space:nowrap; }
+  .pref-date{ flex:0 0 auto; width:64px; text-align:center; }
+  .pref-day{ font-family:"Zen Maru Gothic",sans-serif; font-weight:800; font-size:14px; color:var(--soil-800); }
   .pref-today-dot{ display:inline-block; font-size:9px; font-weight:700; color:var(--leaf-600); background:#dff0dc; border-radius:999px; padding:1px 6px; margin-top:2px; }
   .pref-label{ font-size:10.5px; color:var(--bark); margin-top:2px; }
   .pref-wanters{ flex:1; min-width:0; font-size:12px; color:var(--ink-soft); line-height:1.5; }
@@ -740,7 +727,6 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
   </div>
 
   <div class="conn-banner" id="connBanner"><span class="conn-dot"></span><span id="connBannerText">オフラインです。通信が回復すると自動的に同期されます</span></div>
-  <div class="cache-banner" id="cacheBanner"><span class="conn-dot"></span><span id="cacheBannerText"></span><button id="cacheRetryBtn" onclick="retryLoadCurrentTab()">再読み込み</button></div>
 </header>
 
 <main id="main"></main>
@@ -1361,51 +1347,6 @@ let unsubChecks = null;
 // 完了時に最新世代でなければ描画・購読をスキップする）。
 let loadTabGeneration = 0;
 
-// 通信が完全に落ちている（Firestoreの取得が繰り返し失敗する）ときに、
-// 「真っ白/エラーだけで何も見えない」状態を避けるための保険。
-// 直近に正常取得できた構成データ・本日のチェック状態をlocalStorageに
-// 控えておき、取得に失敗した際はこれを表示にフォールバックさせる。
-// （IndexedDBは既知のハング不具合の主因のため使わず、同期APIで
-//   ハングし得ないlocalStorageのみを使う）
-const LOCAL_CACHE_PREFIX = "atlasCache_v1_";
-function localCacheSet(key, value){
-  try{ localStorage.setItem(LOCAL_CACHE_PREFIX + key, JSON.stringify({ v: value, savedAt: new Date().toISOString() })); }
-  catch(e){ /* 保存できなくても致命的ではないので無視（容量超過・プライベートモード等） */ }
-}
-function localCacheGet(key){
-  try{
-    const raw = localStorage.getItem(LOCAL_CACHE_PREFIX + key);
-    if(!raw) return null;
-    return JSON.parse(raw); // { v, savedAt }
-  }catch(e){ return null; }
-}
-
-// 現在表示中のタブが「取得失敗によりキャッシュ表示になっている」かどうかの状態。
-// { structureSavedAt, checksSavedAt } のいずれかがセットされていればキャッシュ表示中。
-let cacheFallback = {};
-
-function formatSavedAt(iso){
-  const d = new Date(iso);
-  if(isNaN(d.getTime())) return "";
-  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
-}
-function updateCacheBanner(){
-  const banner = document.getElementById("cacheBanner");
-  const text = document.getElementById("cacheBannerText");
-  const info = cacheFallback[currentTab];
-  if(info && (info.structureSavedAt || info.checksSavedAt)){
-    const savedAt = info.structureSavedAt || info.checksSavedAt;
-    text.textContent = `通信できないため、${formatSavedAt(savedAt)}時点の保存データを表示しています（最新ではない可能性があります）`;
-    banner.classList.add("show");
-  }else{
-    banner.classList.remove("show");
-  }
-}
-// バナーの「再読み込み」ボタンから呼ばれる。手動で現在のタブの再取得を試みる。
-async function retryLoadCurrentTab(){
-  await loadTab(currentTab);
-}
-
 function isHistoryMode(){ return viewDate !== todayStr; }
 
 function isPlaceholderStructure(sections){
@@ -1450,9 +1391,6 @@ async function ensureStructureLoaded(tab){
       }
       structures[tab] = loaded;
       if(tab==="hiru"){ await applyHiruContentFixV2(); }
-      localCacheSet("structure_"+tab, structures[tab]);
-      cacheFallback[tab] = cacheFallback[tab] || {};
-      cacheFallback[tab].structureSavedAt = null;
       return structures[tab];
     }
     // ここに来るのは snap.exists===false の場合のみ（＝そのタブがまだ一度も
@@ -1460,28 +1398,16 @@ async function ensureStructureLoaded(tab){
     const seeded = withIds(INITIAL_DATA[tab].sections);
     structures[tab] = seeded;
     await saveStructure(tab);
-    localCacheSet("structure_"+tab, structures[tab]);
-    cacheFallback[tab] = cacheFallback[tab] || {};
-    cacheFallback[tab].structureSavedAt = null;
     return seeded;
   }catch(e){
     // 【重要】取得(get)自体が失敗/タイムアウトした場合は、絶対に初期データで
     // 上書き保存してはいけない。実際のデータがあるのに読めなかっただけの
     // 可能性が高く、ここで書き込むと本物のデータを消してしまう。
     // 既にメモリ上に前回分のデータがあればそれを維持し、無ければ
-    // ローカルに控えておいた直近の正常取得データがないか確認する
-    // （完全に通信不能でも、最後に見えていた内容がゼロから何も
-    //   見えなくなる事態を避けるため）。それも無ければ初期データを
-    // 表示だけする（保存はしない）。
+    // 「保存はせず」表示だけ初期データにして、次に正常に読めた時に
+    // 正しいデータへ復旧できるようにする。
     connErrFail("栽培管理データの取得", e);
     if(structures[tab]) return structures[tab];
-    const cached = localCacheGet("structure_"+tab);
-    if(cached && cached.v){
-      structures[tab] = cached.v;
-      cacheFallback[tab] = cacheFallback[tab] || {};
-      cacheFallback[tab].structureSavedAt = cached.savedAt;
-      return structures[tab];
-    }
     return withIds(INITIAL_DATA[tab].sections);
   }
 }
@@ -1664,21 +1590,8 @@ async function loadTodayChecks(tab){
   try{
     const snap = await withDbTimeoutRetry(()=>checksRef(tab, todayStr).get(), "todayChecks-get-timeout");
     todayChecked = (snap.exists && snap.data() && snap.data().data) ? snap.data().data : {};
-    localCacheSet("checks_"+tab+"_"+todayStr, todayChecked);
-    cacheFallback[tab] = cacheFallback[tab] || {};
-    cacheFallback[tab].checksSavedAt = null;
   }catch(e){
-    // 今日分のキャッシュ（同じ日付キー）があればそれを使う。無ければ
-    // 「未チェック」として表示する（＝古い日の結果を今日のものとして
-    // 誤表示しないよう、日付が違うキャッシュは使わない）。
-    const cached = localCacheGet("checks_"+tab+"_"+todayStr);
-    if(cached && cached.v){
-      todayChecked = cached.v;
-      cacheFallback[tab] = cacheFallback[tab] || {};
-      cacheFallback[tab].checksSavedAt = cached.savedAt;
-    }else{
-      todayChecked = {};
-    }
+    todayChecked = {};
     flashConnError("本日のチェック状態の取得に失敗しました（" + errDetail(e) + "）");
   }
 }
@@ -1704,8 +1617,6 @@ function subscribeStructure(tab){
     if(snap.metadata.hasPendingWrites) return; // 自分自身の書き込みは無視（二重再描画防止）
     if(snap.exists && snap.data() && snap.data().sections){
       structures[tab] = snap.data().sections;
-      localCacheSet("structure_"+tab, structures[tab]);
-      if(cacheFallback[tab]) cacheFallback[tab].structureSavedAt = null;
       if(tab===currentTab){ render(); updateUndoBtn(); }
     }
   }, (err)=>{
@@ -1718,8 +1629,6 @@ function subscribeChecks(tab){
     if(snap.metadata.hasPendingWrites) return;
     todayChecked = (snap.exists && snap.data() && snap.data().data) ? snap.data().data : {};
     dateStats[todayStr] = (snap.exists && snap.data() && snap.data().stats) ? snap.data().stats : countStats(tab, todayChecked);
-    localCacheSet("checks_"+tab+"_"+todayStr, todayChecked);
-    if(cacheFallback[tab]) cacheFallback[tab].checksSavedAt = null;
         if(tab===currentTab && !isHistoryMode()){
       checkedMap = todayChecked;
       render();
@@ -1866,7 +1775,6 @@ function render(){
   if(isConfigPlaceholder()){
     showConfigBanner();
   }
-  updateCacheBanner();
 
   const readOnly = isHistoryMode();
 
@@ -3263,24 +3171,12 @@ let preferences = {}; // { "YYYY-MM-DD": {name:true,...} } 対応可能な人
 let priorities = {};  // { "YYYY-MM-DD": {name:true,...} } 特に希望している人(対応可能な人のみ設定できる)
 function preferencesCol(){ return db.collection("preferences"); }
 async function loadPreferencesRange(dateStrs){
-  if(dateStrs.length === 0) return;
   try{
-    const sorted = dateStrs.slice().sort();
-    const startId = sorted[0];
-    const endId = sorted[sorted.length-1];
-    const wanted = new Set(dateStrs);
-    const snap = await preferencesCol()
-      .where(firebase.firestore.FieldPath.documentId(), ">=", startId)
-      .where(firebase.firestore.FieldPath.documentId(), "<=", endId)
-      .get();
-    // 範囲内には対象外の日付(当番不要日など)のドキュメントも含まれ得るので、
-    // 先に対象日付を空でリセットしてから、該当するものだけ埋め直す
-    dateStrs.forEach(ds=>{ preferences[ds] = {}; priorities[ds] = {}; });
-    snap.forEach(doc=>{
-      if(!wanted.has(doc.id)) return;
-      const data = doc.data();
-      preferences[doc.id] = data.wants || {};
-      priorities[doc.id] = data.priority || {};
+    const results = await Promise.all(dateStrs.map(ds=>preferencesCol().doc(ds).get()));
+    results.forEach((snap,i)=>{
+      const data = snap.exists ? snap.data() : {};
+      preferences[dateStrs[i]] = data.wants || {};
+      priorities[dateStrs[i]] = data.priority || {};
     });
   }catch(e){ /* オフライン時は既存キャッシュのまま */ }
 }
@@ -3818,7 +3714,7 @@ async function renderCalendarPanel(el){
     months.forEach((m, mIdx)=>{
     const { list } = monthDates(m.year, m.month);
     html += `<div class="cal-month-block" id="calMonthBlock${mIdx}" data-year="${m.year}" data-month="${m.month+1}">`;
-    html += `<div class="cal-month-title">${m.year}年 ${m.month+1}月 <button class="lock-btn" data-print-month="${mIdx}">📄 PDF保存</button></div>`;
+        html += `<div class="cal-month-title">${m.year}年 ${m.month+1}月</div>`;
     html += `<div class="cal-grid">`;
     ["日","月","火","水","木","金","土"].forEach(d=>{ html += `<div class="cal-dow">${d}</div>`; });
     const firstDow = new Date(m.year,m.month,1).getDay();
@@ -3854,12 +3750,6 @@ async function renderCalendarPanel(el){
       openSpecialDateModal();
     });
   }
-  el.querySelectorAll("[data-print-month]").forEach(btn=>{
-  btn.addEventListener("click", (e)=>{
-    e.stopPropagation();
-    downloadCalendarMonthPdf(btn.getAttribute("data-print-month"));
-  });
-});
   el.querySelectorAll("[data-cal-date]").forEach(cell=>{
     cell.addEventListener("click", ()=>openCalendarDayModal(cell.getAttribute("data-cal-date")));
   });
