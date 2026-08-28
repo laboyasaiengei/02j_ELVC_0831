@@ -3434,12 +3434,21 @@ async function loadCalendarRange(dateStrs){
     });
   }catch(e){ /* オフライン時は既存キャッシュのまま */ }
 }
-async function loadAllCalendarForScore(){
+async function loadAllCalendarForScore(period){
   try{
-    // calendarコレクション全件取得は、単純get()・範囲クエリとも異なる第3のクエリ種別
-    // (フィルタなしの全件スキャン)のため、他タブの修正だけではこれは温まらない。
-    // ここも同様にタイムアウト+リトライで保護する。
-    const snap = await withDbTimeoutRetry(()=>calendarCol().get(), "calendarAll-get-timeout");
+    // 期間が分かっている場合は「全件get()」ではなく、その期間だけの範囲クエリに絞る。
+    // 当番管理を使い続けるほどcalendarコレクションの総件数は増えていくため、全件取得は
+    // 期間が長くなるほど遅くなる。範囲クエリなら対象期間の件数だけで済む。
+    let q = calendarCol();
+    if(period){
+      const minDs = `${period.startYear}-${pad2(period.startMonth)}-01`;
+      const endYear = period.endMonth===12 ? period.endYear+1 : period.endYear;
+      const endMonthNext = period.endMonth===12 ? 1 : period.endMonth+1;
+      const maxDsExclusive = `${endYear}-${pad2(endMonthNext)}-01`; // 翌月1日未満(月末日数を気にしなくてよい)
+      q = q.where(firebase.firestore.FieldPath.documentId(), ">=", minDs)
+           .where(firebase.firestore.FieldPath.documentId(), "<", maxDsExclusive);
+    }
+    const snap = await withDbTimeoutRetry(()=>q.get(), "calendarAll-get-timeout");
     const map={};
     snap.forEach(doc=>{ map[doc.id] = Array.isArray(doc.data().people) ? doc.data().people : []; });
     return map;
@@ -3691,11 +3700,11 @@ let fiscalPresets = []; // [{id, startYear, startMonth, endYear, endMonth}]
 let selectedPeriodId = null; // 表示中の期間(未選択なら保存済みの先頭を使う)
 async function renderScorePanel(el){
   el.innerHTML = `<div class="empty-note">読み込み中…</div>`;
-  const allCal = await loadAllCalendarForScore();
   const currentPeriodId = (selectedPeriodId && fiscalPresets.some(p=>p.id===selectedPeriodId))
     ? selectedPeriodId
     : (fiscalPresets[0] ? fiscalPresets[0].id : null);
   const currentPeriod = fiscalPresets.find(p=>p.id===currentPeriodId) || null;
+  const allCal = await loadAllCalendarForScore(currentPeriod);
   const scores = {}, counts = {};
   roster.forEach(n=>{ scores[n]=0; counts[n]=0; });
   if(currentPeriod){
@@ -4036,10 +4045,10 @@ async function openCalendarDayModal(ds){
     document.getElementById("calendarDayModal").classList.add("show");
 
         // 選択中の集計期間内での、これまでの累計当番回数を人ごとに集計(割り振りの参考用)
-    const allCal = await loadAllCalendarForScore();
     const currentPeriod = (selectedPeriodId && fiscalPresets.some(p=>p.id===selectedPeriodId))
       ? fiscalPresets.find(p=>p.id===selectedPeriodId)
       : (fiscalPresets[0] || null);
+    const allCal = await loadAllCalendarForScore(currentPeriod);
     const counts = {};
     roster.forEach(n=>{ counts[n]=0; });
     Object.keys(allCal).forEach(otherDs=>{
