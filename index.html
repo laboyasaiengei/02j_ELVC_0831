@@ -3336,11 +3336,23 @@ function prewarmRangeQuery(){
       .where(firebase.firestore.FieldPath.documentId(), ">=", ds)
       .where(firebase.firestore.FieldPath.documentId(), "<=", ds)
       .get(), "prewarm-range-timeout", 1).catch(()=>{});
-    // スコアタブが使う「フィルタなし全件get()」も範囲クエリとは別種のクエリ形状なので、
-    // 同様にここで一度温めておく(calendarはこの時点でまだ定義前なので db.collection() で直接参照)。
-    withDbTimeoutRetry(()=>db.collection("calendar").limit(1).get(), "prewarm-all-timeout", 1).catch(()=>{});
+    // スコアタブ(loadAllCalendarForScore)が実際に使うのも同じ「documentIdの範囲クエリ」
+    // なので、そのクエリ形状に合わせて温める(以前はlimit(1)という別形状のクエリを温めており、
+    // スコアタブの本番クエリは一度も温まらないまま初回アクセスで詰まっていた)。
+    withDbTimeoutRetry(()=>db.collection("calendar")
+      .where(firebase.firestore.FieldPath.documentId(), ">=", ds)
+      .where(firebase.firestore.FieldPath.documentId(), "<=", ds)
+      .get(), "prewarm-calendar-range-timeout", 1).catch(()=>{});
   }catch(e){ /* 失敗しても無視 */ }
 }
+/* ---- 当番データの簡易キャッシュ ----
+   希望表・スコアのどちらのタブも「開くたびに毎回Firestoreへ読みに行く」実装になっていて、
+   タブを行き来するだけで無駄な再取得が発生していた。これが「片方の読み込みを軽くしても
+   もう片方が遅く感じる」揺り戻しの主因(実際は両方とも同じ欠陥を持っていた)。
+   直近に取得済みのデータは一定時間キャッシュから返し、通信そのものを減らす。 */
+const DUTY_CACHE_TTL_MS = 60 * 1000; // この時間内の再表示はキャッシュを使う
+let prefRangeCacheKey = null, prefRangeCacheAt = 0;
+let scoreCache = {}; // { [periodId]: { at:number, data:{ [dateStr]: string[] } } }
 async function loadPreferencesRange(dateStrs){
   if(!dateStrs.length) return;
   try{
@@ -3466,6 +3478,8 @@ async function purgeDutyDataForPeriod(period){
     });
     await Promise.all(deletions);
   }
+  prefRangeCacheAt = 0; // 希望表・スコアどちらのキャッシュも破棄して次回表示時に再取得させる
+  scoreCache = {};
 }
 async function saveCalendarDay(dateStr, people){
   const prevPeople = calendarAssign[dateStr] || [];
@@ -3481,6 +3495,7 @@ async function saveCalendarDay(dateStr, people){
     await calendarCol().doc(dateStr).set(payload);
     calendarChanged[dateStr] = isSwap || !!calendarChanged[dateStr];
     if(isSwap) calendarPrevious[dateStr] = prevPeople;
+    scoreCache = {}; // 当番の割り当てが変わったのでスコアの集計キャッシュを破棄する
     showToast(isSwap ? "当番を変更しました" : "保存しました");
   }catch(e){ toastFail("当番割り当ての保存", e); }
 }
@@ -3577,7 +3592,14 @@ async function renderPrefPanel(el){
   const nextM = { year: now.getMonth()===11 ? now.getFullYear()+1 : now.getFullYear(), month: (now.getMonth()+1)%12 };
   const thisDates = monthDates(thisM.year, thisM.month).list.filter(isDutyDate);
   const nextDates = monthDates(nextM.year, nextM.month).list.filter(isDutyDate);
-  await loadPreferencesRange(thisDates.concat(nextDates));
+  const allDates = thisDates.concat(nextDates);
+  const rangeKey = allDates.join(",");
+  const cacheNow = Date.now();
+  if(rangeKey !== prefRangeCacheKey || (cacheNow - prefRangeCacheAt) > DUTY_CACHE_TTL_MS){
+    await loadPreferencesRange(allDates);
+    prefRangeCacheKey = rangeKey;
+    prefRangeCacheAt = cacheNow;
+  }
 
   const meBar = `
     <div class="me-bar">
@@ -3704,7 +3726,14 @@ async function renderScorePanel(el){
     ? selectedPeriodId
     : (fiscalPresets[0] ? fiscalPresets[0].id : null);
   const currentPeriod = fiscalPresets.find(p=>p.id===currentPeriodId) || null;
-  const allCal = await loadAllCalendarForScore(currentPeriod);
+  const cached = currentPeriodId ? scoreCache[currentPeriodId] : null;
+  let allCal;
+  if(cached && (Date.now() - cached.at) < DUTY_CACHE_TTL_MS){
+    allCal = cached.data;
+  }else{
+    allCal = await loadAllCalendarForScore(currentPeriod);
+    if(currentPeriodId) scoreCache[currentPeriodId] = { at: Date.now(), data: allCal };
+  }
   const scores = {}, counts = {};
   roster.forEach(n=>{ scores[n]=0; counts[n]=0; });
   if(currentPeriod){
