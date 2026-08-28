@@ -1268,91 +1268,30 @@ function circledNumber(n){
   return `(${n})`; // 51回以上は丸数字の文字がないため括弧表記にフォールバック
 }
 
-  /* A4横向けに最適化したカレンダーHTMLを、画面外のコンテナに組み立てる。
-     (画面表示用の .cal-grid はスマホ幅=420px前提で作られており、
-      そのままPDF化すると余白だらけになるため、印刷専用のレイアウトを別途生成する) */
-  function buildCalendarPrintNode(year, month1, list, firstDow){
-    const wrap = document.createElement("div");
-    wrap.style.cssText = "position:fixed; left:-99999px; top:0; width:1400px; height:990px; box-sizing:border-box; padding:46px 54px; background:#ffffff; display:flex; flex-direction:column; font-family:'Noto Sans JP','Zen Maru Gothic',sans-serif;";
-    const title = document.createElement("div");
-    title.style.cssText = "font-family:'Zen Maru Gothic',sans-serif; font-weight:900; font-size:30px; color:#2f4d38; margin-bottom:18px; flex:0 0 auto;";
-    title.textContent = `${year}年 ${month1}月 当番カレンダー`;
-    wrap.appendChild(title);
-
-    const grid = document.createElement("div");
-    const rowCount = Math.ceil((firstDow + list.length) / 7);
-    grid.style.cssText = `display:grid; grid-template-columns:repeat(7,1fr); grid-template-rows:44px repeat(${rowCount},1fr); gap:6px; flex:1 1 auto; min-height:0;`;
-    wrap.appendChild(grid);
-
-    ["日","月","火","水","木","金","土"].forEach((d,i)=>{
-      const dow = document.createElement("div");
-      const isSun = i===0, isSat = i===6;
-      dow.style.cssText = `display:flex; align-items:center; justify-content:center; font-family:'Zen Maru Gothic',sans-serif; font-weight:700; font-size:16px; color:${isSun?"#c1613f":isSat?"#3a6ea5":"#5c6b5f"};`;
-      dow.textContent = d;
-      grid.appendChild(dow);
-    });
-
-    for(let i=0;i<firstDow;i++){
-      const cell = document.createElement("div");
-      grid.appendChild(cell);
-    }
-    list.forEach(ds=>{
-      const d = new Date(ds+"T00:00:00");
-      const duty = isDutyDate(ds);
-      const people = calendarAssign[ds] || [];
-      const changed = !!calendarChanged[ds];
-      const dow = d.getDay();
-      const cell = document.createElement("div");
-      cell.style.cssText = `border:1px solid ${duty?"#eccf9d":"#dfe3dd"}; border-radius:8px; background:${duty?"#fdf3e6":"#ffffff"}; padding:6px 8px; display:flex; flex-direction:column; overflow:hidden; min-height:0;`;
-      const numColor = duty ? "#c1613f" : (dow===0?"#c1613f":dow===6?"#3a6ea5":"#2f4d38");
-      let inner = `<div style="display:flex; align-items:baseline; justify-content:space-between;">
-        <span style="font-family:'Zen Maru Gothic',sans-serif; font-weight:800; font-size:18px; color:${numColor};">${d.getDate()}</span>
-        ${duty ? `<span style="font-size:11px; color:#8c6a4e; font-weight:600;">${escapeHtml(labelForDate(ds))}</span>` : ``}
-      </div>`;
-      if(people.length){
-        inner += `<div style="margin-top:4px; font-size:15px; font-weight:700; color:#4c7a52; line-height:1.35; word-break:break-all;">${escapeHtml(people.join("・"))}</div>`;
-      }
-      if(changed){
-        inner += `<div style="margin-top:auto; font-size:10.5px; color:#c1613f; font-weight:700;">🔁変更あり</div>`;
-      }
-      cell.innerHTML = inner;
-      grid.appendChild(cell);
-    });
-
-    document.body.appendChild(wrap);
-    return wrap;
-  }
-
   async function downloadCalendarMonthPdf(idx){
   const target = document.getElementById("calMonthBlock"+idx);
   if(!target) return;
-  const year = Number(target.dataset.year);
-  const month1 = Number(target.dataset.month); // 1-12
   showToast("PDFを作成しています…");
-  let printNode = null;
+  const printBtn = target.querySelector("[data-print-month]");
   try{
     await loadPdfLibs();
-    const { list } = monthDates(year, month1-1);
-    const firstDow = new Date(year, month1-1, 1).getDay();
-    printNode = buildCalendarPrintNode(year, month1, list, firstDow);
-    const canvas = await html2canvas(printNode, { scale:2, backgroundColor:"#ffffff", useCORS:true });
-    document.body.removeChild(printNode);
-    printNode = null;
+    if(printBtn) printBtn.style.visibility = "hidden";
+    const canvas = await html2canvas(target, { scale:2, backgroundColor:"#ffffff", useCORS:true });
+    if(printBtn) printBtn.style.visibility = "";
     const imgData = canvas.toDataURL("image/png");
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation:"landscape", unit:"pt", format:"a4" });
+    const pdf = new jsPDF({ orientation:"portrait", unit:"pt", format:"a4" });
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 18;
-    const ratio = Math.min((pageWidth-margin*2)/canvas.width, (pageHeight-margin*2)/canvas.height);
+    const ratio = Math.min(pageWidth/canvas.width, pageHeight/canvas.height);
     const imgW = canvas.width*ratio;
     const imgH = canvas.height*ratio;
-    pdf.addImage(imgData, "PNG", (pageWidth-imgW)/2, (pageHeight-imgH)/2, imgW, imgH);
-    const fileLabel = `${year}年${month1}月`;
+    pdf.addImage(imgData, "PNG", (pageWidth-imgW)/2, 30, imgW, imgH);
+    const fileLabel = `${target.dataset.year}年${target.dataset.month}月`;
     pdf.save(`${fileLabel}_当番カレンダー.pdf`);
     showToast("PDFを保存しました");
   }catch(e){
-    if(printNode && printNode.parentNode) document.body.removeChild(printNode);
+    if(printBtn) printBtn.style.visibility = "";
     showToast("PDFの作成に失敗しました");
   }
 }
@@ -3323,56 +3262,13 @@ function prefDeadlineLabel(){
 let preferences = {}; // { "YYYY-MM-DD": {name:true,...} } 対応可能な人
 let priorities = {};  // { "YYYY-MM-DD": {name:true,...} } 特に希望している人(対応可能な人のみ設定できる)
 function preferencesCol(){ return db.collection("preferences"); }
-// 起動直後、裏側で「範囲クエリ(documentIdの不等号条件)」を1回だけ軽く投げておく。
-// カレンダー/希望表タブが使うloadCalendarRange/loadPreferencesRangeは通常のget()とは
-// 異なる種類のFirestore通信で、iOS18.x系のWebChannel不具合により「そのクエリ種別を
-// 初めて使う瞬間」にだけ数秒〜十数秒詰まることがある。実際にユーザーが希望表/カレンダー
-// タブを開く前にここで一度温めておくことで、本番の読み込みが詰まらないようにする。
-// 結果自体は使わず、失敗しても無視してよい(本筋の起動処理には影響させない)。
-function prewarmRangeQuery(){
-  try{
-    const ds = getTodayStr();
-    withDbTimeoutRetry(()=>preferencesCol()
-      .where(firebase.firestore.FieldPath.documentId(), ">=", ds)
-      .where(firebase.firestore.FieldPath.documentId(), "<=", ds)
-      .get(), "prewarm-range-timeout", 1).catch(()=>{});
-    // スコアタブ(loadAllCalendarForScore)が実際に使うのも同じ「documentIdの範囲クエリ」
-    // なので、そのクエリ形状に合わせて温める(以前はlimit(1)という別形状のクエリを温めており、
-    // スコアタブの本番クエリは一度も温まらないまま初回アクセスで詰まっていた)。
-    withDbTimeoutRetry(()=>db.collection("calendar")
-      .where(firebase.firestore.FieldPath.documentId(), ">=", ds)
-      .where(firebase.firestore.FieldPath.documentId(), "<=", ds)
-      .get(), "prewarm-calendar-range-timeout", 1).catch(()=>{});
-  }catch(e){ /* 失敗しても無視 */ }
-}
-/* ---- 当番データの簡易キャッシュ ----
-   希望表・スコアのどちらのタブも「開くたびに毎回Firestoreへ読みに行く」実装になっていて、
-   タブを行き来するだけで無駄な再取得が発生していた。これが「片方の読み込みを軽くしても
-   もう片方が遅く感じる」揺り戻しの主因(実際は両方とも同じ欠陥を持っていた)。
-   直近に取得済みのデータは一定時間キャッシュから返し、通信そのものを減らす。 */
-const DUTY_CACHE_TTL_MS = 60 * 1000; // この時間内の再表示はキャッシュを使う
-let prefRangeCacheKey = null, prefRangeCacheAt = 0;
-let scoreCache = {}; // { [periodId]: { at:number, data:{ [dateStr]: string[] } } }
 async function loadPreferencesRange(dateStrs){
-  if(!dateStrs.length) return;
   try{
-    // 以前は日付ごとに個別のdoc().get()をPromise.allで並列発行していたが、
-    // カレンダー2ヶ月分だと十数〜数十件の同時リクエストになり、iOS18.x系の
-    // Firestore WebChannelがまれに詰まる不具合と重なって画面が固まって見える
-    // 原因になっていた。ドキュメントIDが日付文字列(YYYY-MM-DD)で辞書順=時系列順に
-    // 並ぶ性質を利用し、範囲クエリ1回にまとめてリクエスト数を減らす。
-    const sorted = [...dateStrs].sort();
-    const minDs = sorted[0], maxDs = sorted[sorted.length-1];
-    const q = await withDbTimeoutRetry(()=>preferencesCol()
-      .where(firebase.firestore.FieldPath.documentId(), ">=", minDs)
-      .where(firebase.firestore.FieldPath.documentId(), "<=", maxDs)
-      .get(), "preferencesRange-get-timeout");
-    const found = {};
-    q.forEach(doc=>{ found[doc.id] = doc.data(); });
-    dateStrs.forEach(ds=>{
-      const data = found[ds] || {};
-      preferences[ds] = data.wants || {};
-      priorities[ds] = data.priority || {};
+    const results = await Promise.all(dateStrs.map(ds=>preferencesCol().doc(ds).get()));
+    results.forEach((snap,i)=>{
+      const data = snap.exists ? snap.data() : {};
+      preferences[dateStrs[i]] = data.wants || {};
+      priorities[dateStrs[i]] = data.priority || {};
     });
   }catch(e){ /* オフライン時は既存キャッシュのまま */ }
 }
@@ -3426,41 +3322,19 @@ let calendarChanged = {};  // { "YYYY-MM-DD": true } 当番変更があった日
 let calendarPrevious = {}; // { "YYYY-MM-DD": ["name1",...] } 変更前の担当者
 function calendarCol(){ return db.collection("calendar"); }
 async function loadCalendarRange(dateStrs){
-  if(!dateStrs.length) return;
   try{
-    // loadPreferencesRangeと同様、個別get()の並列発行をやめて範囲クエリ1回に集約
-    // (iOS18.x系でのWebChannel詰まり対策、詳細は同関数のコメント参照)。
-    const sorted = [...dateStrs].sort();
-    const minDs = sorted[0], maxDs = sorted[sorted.length-1];
-    const q = await withDbTimeoutRetry(()=>calendarCol()
-      .where(firebase.firestore.FieldPath.documentId(), ">=", minDs)
-      .where(firebase.firestore.FieldPath.documentId(), "<=", maxDs)
-      .get(), "calendarRange-get-timeout");
-    const found = {};
-    q.forEach(doc=>{ found[doc.id] = doc.data(); });
-    dateStrs.forEach(ds=>{
-      const data = found[ds];
-      calendarAssign[ds] = (data && Array.isArray(data.people)) ? data.people : [];
-      calendarChanged[ds] = !!(data && data.changed);
-      calendarPrevious[ds] = (data && Array.isArray(data.previousPeople)) ? data.previousPeople : [];
+    const results = await Promise.all(dateStrs.map(ds=>calendarCol().doc(ds).get()));
+    results.forEach((snap,i)=>{
+      const ds = dateStrs[i];
+      calendarAssign[ds] = (snap.exists && Array.isArray(snap.data().people)) ? snap.data().people : [];
+      calendarChanged[ds] = !!(snap.exists && snap.data().changed);
+      calendarPrevious[ds] = (snap.exists && Array.isArray(snap.data().previousPeople)) ? snap.data().previousPeople : [];
     });
   }catch(e){ /* オフライン時は既存キャッシュのまま */ }
 }
-async function loadAllCalendarForScore(period){
+async function loadAllCalendarForScore(){
   try{
-    // 期間が分かっている場合は「全件get()」ではなく、その期間だけの範囲クエリに絞る。
-    // 当番管理を使い続けるほどcalendarコレクションの総件数は増えていくため、全件取得は
-    // 期間が長くなるほど遅くなる。範囲クエリなら対象期間の件数だけで済む。
-    let q = calendarCol();
-    if(period){
-      const minDs = `${period.startYear}-${pad2(period.startMonth)}-01`;
-      const endYear = period.endMonth===12 ? period.endYear+1 : period.endYear;
-      const endMonthNext = period.endMonth===12 ? 1 : period.endMonth+1;
-      const maxDsExclusive = `${endYear}-${pad2(endMonthNext)}-01`; // 翌月1日未満(月末日数を気にしなくてよい)
-      q = q.where(firebase.firestore.FieldPath.documentId(), ">=", minDs)
-           .where(firebase.firestore.FieldPath.documentId(), "<", maxDsExclusive);
-    }
-    const snap = await withDbTimeoutRetry(()=>q.get(), "calendarAll-get-timeout");
+    const snap = await calendarCol().get();
     const map={};
     snap.forEach(doc=>{ map[doc.id] = Array.isArray(doc.data().people) ? doc.data().people : []; });
     return map;
@@ -3478,8 +3352,6 @@ async function purgeDutyDataForPeriod(period){
     });
     await Promise.all(deletions);
   }
-  prefRangeCacheAt = 0; // 希望表・スコアどちらのキャッシュも破棄して次回表示時に再取得させる
-  scoreCache = {};
 }
 async function saveCalendarDay(dateStr, people){
   const prevPeople = calendarAssign[dateStr] || [];
@@ -3495,7 +3367,6 @@ async function saveCalendarDay(dateStr, people){
     await calendarCol().doc(dateStr).set(payload);
     calendarChanged[dateStr] = isSwap || !!calendarChanged[dateStr];
     if(isSwap) calendarPrevious[dateStr] = prevPeople;
-    scoreCache = {}; // 当番の割り当てが変わったのでスコアの集計キャッシュを破棄する
     showToast(isSwap ? "当番を変更しました" : "保存しました");
   }catch(e){ toastFail("当番割り当ての保存", e); }
 }
@@ -3592,14 +3463,7 @@ async function renderPrefPanel(el){
   const nextM = { year: now.getMonth()===11 ? now.getFullYear()+1 : now.getFullYear(), month: (now.getMonth()+1)%12 };
   const thisDates = monthDates(thisM.year, thisM.month).list.filter(isDutyDate);
   const nextDates = monthDates(nextM.year, nextM.month).list.filter(isDutyDate);
-  const allDates = thisDates.concat(nextDates);
-  const rangeKey = allDates.join(",");
-  const cacheNow = Date.now();
-  if(rangeKey !== prefRangeCacheKey || (cacheNow - prefRangeCacheAt) > DUTY_CACHE_TTL_MS){
-    await loadPreferencesRange(allDates);
-    prefRangeCacheKey = rangeKey;
-    prefRangeCacheAt = cacheNow;
-  }
+  await loadPreferencesRange(thisDates.concat(nextDates));
 
   const meBar = `
     <div class="me-bar">
@@ -3722,18 +3586,11 @@ let fiscalPresets = []; // [{id, startYear, startMonth, endYear, endMonth}]
 let selectedPeriodId = null; // 表示中の期間(未選択なら保存済みの先頭を使う)
 async function renderScorePanel(el){
   el.innerHTML = `<div class="empty-note">読み込み中…</div>`;
+  const allCal = await loadAllCalendarForScore();
   const currentPeriodId = (selectedPeriodId && fiscalPresets.some(p=>p.id===selectedPeriodId))
     ? selectedPeriodId
     : (fiscalPresets[0] ? fiscalPresets[0].id : null);
   const currentPeriod = fiscalPresets.find(p=>p.id===currentPeriodId) || null;
-  const cached = currentPeriodId ? scoreCache[currentPeriodId] : null;
-  let allCal;
-  if(cached && (Date.now() - cached.at) < DUTY_CACHE_TTL_MS){
-    allCal = cached.data;
-  }else{
-    allCal = await loadAllCalendarForScore(currentPeriod);
-    if(currentPeriodId) scoreCache[currentPeriodId] = { at: Date.now(), data: allCal };
-  }
   const scores = {}, counts = {};
   roster.forEach(n=>{ scores[n]=0; counts[n]=0; });
   if(currentPeriod){
@@ -3934,11 +3791,8 @@ async function renderCalendarPanel(el){
   ];
   let allDates = [];
   months.forEach(m=>{ allDates = allDates.concat(monthDates(m.year, m.month).list); });
-  // 互いに独立した読み込みなので並列化(直列awaitだと待ち時間が単純合算されてしまう)
-  await Promise.all([
-    loadCalendarRange(allDates),
-    loadPreferencesRange(allDates.filter(isDutyDate))
-  ]);
+  await loadCalendarRange(allDates);
+  await loadPreferencesRange(allDates.filter(isDutyDate));
     let html = `<div class="duty-section-title"><span class="title-text">当番カレンダー</span>
     <span class="duty-actions">
       <button class="lock-btn" id="editorLockBtn">${isAdmin?"🔓 管理者モード解除":"🔒 管理者パスワード入力"}</button>
@@ -4074,10 +3928,10 @@ async function openCalendarDayModal(ds){
     document.getElementById("calendarDayModal").classList.add("show");
 
         // 選択中の集計期間内での、これまでの累計当番回数を人ごとに集計(割り振りの参考用)
+    const allCal = await loadAllCalendarForScore();
     const currentPeriod = (selectedPeriodId && fiscalPresets.some(p=>p.id===selectedPeriodId))
       ? fiscalPresets.find(p=>p.id===selectedPeriodId)
       : (fiscalPresets[0] || null);
-    const allCal = await loadAllCalendarForScore(currentPeriod);
     const counts = {};
     roster.forEach(n=>{ counts[n]=0; });
     Object.keys(allCal).forEach(otherDs=>{
@@ -4478,7 +4332,6 @@ document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
         await initFirebase();
         if(settled) return;
         setupConnectionBanner();
-        prewarmRangeQuery(); // 結果は待たない(裏側でクエリ種別だけ先に温めておく)
         setLoadingStep("各種データを読み込み中…" + attemptTag);
         // loadFiscalPresetsはloadFiscalSettingsの結果(移行処理)に依存するため、
         // それ以外の読み込みと一緒に並列化して待ち時間を短縮する
