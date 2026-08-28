@@ -3171,12 +3171,23 @@ let preferences = {}; // { "YYYY-MM-DD": {name:true,...} } 対応可能な人
 let priorities = {};  // { "YYYY-MM-DD": {name:true,...} } 特に希望している人(対応可能な人のみ設定できる)
 function preferencesCol(){ return db.collection("preferences"); }
 async function loadPreferencesRange(dateStrs){
+  if(dateStrs.length === 0) return;
   try{
-    const results = await Promise.all(dateStrs.map(ds=>preferencesCol().doc(ds).get()));
-    results.forEach((snap,i)=>{
-      const data = snap.exists ? snap.data() : {};
-      preferences[dateStrs[i]] = data.wants || {};
-      priorities[dateStrs[i]] = data.priority || {};
+    const sorted = dateStrs.slice().sort();
+    const startId = sorted[0];
+    const endId = sorted[sorted.length-1];
+    const wanted = new Set(dateStrs);
+    const snap = await preferencesCol()
+      .where(firebase.firestore.FieldPath.documentId(), ">=", startId)
+      .where(firebase.firestore.FieldPath.documentId(), "<=", endId)
+      .get();
+    // 範囲内に対象外の日付のドキュメントが含まれ得るので、まず対象日付を空でリセットしてから埋め直す
+    dateStrs.forEach(ds=>{ preferences[ds] = {}; priorities[ds] = {}; });
+    snap.forEach(doc=>{
+      if(!wanted.has(doc.id)) return;
+      const data = doc.data();
+      preferences[doc.id] = data.wants || {};
+      priorities[doc.id] = data.priority || {};
     });
   }catch(e){ /* オフライン時は既存キャッシュのまま */ }
 }
@@ -3230,13 +3241,23 @@ let calendarChanged = {};  // { "YYYY-MM-DD": true } 当番変更があった日
 let calendarPrevious = {}; // { "YYYY-MM-DD": ["name1",...] } 変更前の担当者
 function calendarCol(){ return db.collection("calendar"); }
 async function loadCalendarRange(dateStrs){
+  if(dateStrs.length === 0) return;
   try{
-    const results = await Promise.all(dateStrs.map(ds=>calendarCol().doc(ds).get()));
-    results.forEach((snap,i)=>{
-      const ds = dateStrs[i];
-      calendarAssign[ds] = (snap.exists && Array.isArray(snap.data().people)) ? snap.data().people : [];
-      calendarChanged[ds] = !!(snap.exists && snap.data().changed);
-      calendarPrevious[ds] = (snap.exists && Array.isArray(snap.data().previousPeople)) ? snap.data().previousPeople : [];
+    const sorted = dateStrs.slice().sort();
+    const startId = sorted[0];
+    const endId = sorted[sorted.length-1];
+    const wanted = new Set(dateStrs);
+    const snap = await calendarCol()
+      .where(firebase.firestore.FieldPath.documentId(), ">=", startId)
+      .where(firebase.firestore.FieldPath.documentId(), "<=", endId)
+      .get();
+    dateStrs.forEach(ds=>{ calendarAssign[ds] = []; calendarChanged[ds] = false; calendarPrevious[ds] = []; });
+    snap.forEach(doc=>{
+      if(!wanted.has(doc.id)) return;
+      const data = doc.data();
+      calendarAssign[doc.id] = Array.isArray(data.people) ? data.people : [];
+      calendarChanged[doc.id] = !!data.changed;
+      calendarPrevious[doc.id] = Array.isArray(data.previousPeople) ? data.previousPeople : [];
     });
   }catch(e){ /* オフライン時は既存キャッシュのまま */ }
 }
