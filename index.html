@@ -513,7 +513,7 @@
   .score-table tr:last-child td{ border-bottom:none; }
 
   .cal-month-title{ font-family:"Zen Maru Gothic",sans-serif; font-weight:800; color:var(--soil-800); font-size:15px; margin:14px 0 8px; }
-  .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:5px; max-width:420px; margin:0 auto; }
+  .cal-grid{ display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px; width:100%; max-width:420px; margin:0 auto; box-sizing:border-box; }
   .cal-dow{ text-align:center; font-size:10.5px; color:var(--ink-soft); font-weight:700; padding-bottom:2px; }
   .cal-cell{
     aspect-ratio:1/1; border-radius:10px; border:1px solid var(--line); background:var(--card);
@@ -521,6 +521,15 @@
 
     cursor:pointer; overflow:hidden; min-height:52px;
   }
+
+  @media (max-width:390px){
+    .cal-grid{ gap:3px; }
+    .cal-cell{ min-width:0; min-height:0; padding:3px 1px; border-radius:9px; }
+    .cal-dow{ min-width:0; font-size:10px; }
+    .cal-cell .cal-label{ font-size:7.5px; white-space:normal; overflow-wrap:anywhere; }
+    .cal-cell .cal-people{ font-size:8px; }
+  }
+
   .cal-cell.empty{ background:transparent; border:none; cursor:default; }
   .cal-cell.duty{ background:#fdf3e6; border-color:#eccf9d; }
   .cal-cell.past{ opacity:.55; }
@@ -3838,7 +3847,7 @@ async function renderCalendarPanel(el){
       const people = calendarAssign[ds] || [];
               html += `<div class="cal-cell ${duty?"duty":""}${ds<todayStr?" past":""}${ds===todayStr?" today":""}" data-cal-date="${ds}">
         <div class="cal-num-row"><span class="cal-num">${d.getDate()}</span>${calendarChanged[ds] ? `<span class="cal-change-mark" title="当番変更あり">🔁</span>` : ``}</div>
-        ${duty ? `<div class="cal-label">当番</div>` : ``}
+        ${duty ? `<div class="cal-label">${escapeHtml(labelForDate(ds))}</div>` : ``}
         ${people.length ? `<div class="cal-people">${people.map(name=>`<span class="cal-person">${escapeHtml(name)}</span>`).join("")}</div>` : ``}
       </div>`;
     });
@@ -3932,7 +3941,7 @@ async function openCalendarDayModal(ds){
   const wanterNamesHtml = wanterNames.slice().sort((a,b)=>(prio[b]?1:0)-(prio[a]?1:0))
     .map(n=> prio[n] ? `★${escapeHtml(n)}` : escapeHtml(n)).join("・");
   let infoHtml = `<div class="cal-day-info">
-    ${duty ? `<b>${escapeHtml(label)}</b>・当番が必要な日(${pts}pt)<br>` : `通常日(当番は不要です)<br>`}
+    ${duty ? `<b>${escapeHtml(label)}</b><br>` : `通常日(当番は不要です)<br>`}
     当番: ${wanterNames.length ? wanterNamesHtml : "なし"}
     ${calendarChanged[ds] ? `<br>🔁 変更前の担当: ${prevAssigned.length ? escapeHtml(prevAssigned.join("・")) : "なし"}` : ``}
   </div>`;
