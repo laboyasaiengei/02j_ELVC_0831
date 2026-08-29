@@ -516,15 +516,16 @@
   .cal-grid{ display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px; width:100%; max-width:420px; margin:0 auto; box-sizing:border-box; }
   .cal-dow{ text-align:center; font-size:10.5px; color:var(--ink-soft); font-weight:700; padding-bottom:2px; }
   .cal-cell{
-    aspect-ratio:1/1; border-radius:10px; border:1px solid var(--line); background:var(--card);
-    display:flex; flex-direction:column; align-items:center; justify-content:center; padding:4px 2px;
-
-    cursor:pointer; overflow:hidden; min-height:52px;
+    /* 人数や祝日名に応じて縦方向へ自然に伸びる。
+       同じ週のセルはCSS Gridにより最も高いセルへ揃う。 */
+    border-radius:10px; border:1px solid var(--line); background:var(--card);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; padding:5px 2px;
+    cursor:pointer; overflow:visible; min-height:52px; height:auto;
   }
 
   @media (max-width:390px){
     .cal-grid{ gap:3px; }
-    .cal-cell{ min-width:0; min-height:0; padding:3px 1px; border-radius:9px; }
+    .cal-cell{ min-width:0; min-height:52px; height:auto; padding:4px 1px; border-radius:9px; }
     .cal-dow{ min-width:0; font-size:10px; }
     .cal-cell .cal-label{ font-size:7.5px; white-space:normal; overflow-wrap:anywhere; }
     .cal-cell .cal-people{ font-size:8px; }
@@ -541,7 +542,7 @@
   .cal-cell.duty .cal-num{ color:var(--alert); }
   .cal-cell .cal-label{ font-size:8px; color:var(--bark); line-height:1.1; margin-top:1px; text-align:center; }
   .cal-cell .cal-people{ font-size:8.5px; color:var(--leaf-600); font-weight:700; line-height:1.25; margin-top:2px; text-align:center; overflow-wrap:anywhere; }
-  .cal-cell .cal-person{ display:block; }
+  .cal-cell .cal-person{ display:block; white-space:normal; overflow-wrap:anywhere; word-break:break-word; }
   .special-date-row{ display:flex; align-items:center; gap:8px; padding:9px 2px; border-bottom:1px solid var(--line); font-size:12.5px; }
   .special-date-row .sd-date{ font-weight:700; color:var(--soil-800); width:78px; flex:0 0 auto; }
   .special-date-row .sd-label{ flex:1; color:var(--ink-soft); min-width:0; }
