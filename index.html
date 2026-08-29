@@ -667,6 +667,7 @@ html[data-theme="dark"] .cal-dow{ color:#c3cdc0; }
 html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
   
 </style>
+  <!-- ATLAS stable v8: iOS 18.7.10 preference-load failure guard -->
 </head>
 <body>
 
@@ -3200,29 +3201,80 @@ function prefDeadlineLabel(){
 /* ---- 希望表 ---- */
 let preferences = {}; // { "YYYY-MM-DD": {name:true,...} } 当番
 let priorities = {};  // { "YYYY-MM-DD": {name:true,...} } 特に希望している人(当番のみ設定できる)
+
+/* 希望表の取得状態。
+   「取得できなかった」と「正常取得した結果、希望者が0人」を絶対に混同しない。 */
+let preferencesLoadState = "idle"; // idle | loading | success | error
+let preferencesLoadError = null;
+let preferencesLoadRequestId = 0;
+
 function preferencesCol(){ return db.collection("preferences"); }
 async function loadPreferencesRange(dateStrs){
-  if(dateStrs.length === 0) return;
-  try{
-    const sorted = dateStrs.slice().sort();
-    const startId = sorted[0];
-    const endId = sorted[sorted.length-1];
-    const wanted = new Set(dateStrs);
-    const snap = await withDbTimeout(
-      preferencesCol()
-        .where(firebase.firestore.FieldPath.documentId(), ">=", startId)
-        .where(firebase.firestore.FieldPath.documentId(), "<=", endId)
-        .get(),
-      "preferencesRange-get-timeout"
-    );
-    dateStrs.forEach(ds=>{ preferences[ds] = {}; priorities[ds] = {}; });
-    snap.forEach(doc=>{
-      if(!wanted.has(doc.id)) return;
-      const data = doc.data();
-      preferences[doc.id] = data.wants || {};
-      priorities[doc.id] = data.priority || {};
-    });
-  }catch(e){ /* オフライン/タイムアウト時は既存キャッシュのまま */ }
+  if(dateStrs.length === 0){
+    preferencesLoadState = "success";
+    preferencesLoadError = null;
+    return true;
+  }
+
+  const requestId = ++preferencesLoadRequestId;
+  preferencesLoadState = "loading";
+  preferencesLoadError = null;
+
+  const sorted = dateStrs.slice().sort();
+  const startId = sorted[0];
+  const endId = sorted[sorted.length-1];
+  const wanted = new Set(dateStrs);
+
+  let lastErr = null;
+  for(let attempt=1; attempt<=2; attempt++){
+    try{
+      const snap = await withDbTimeout(
+        preferencesCol()
+          .where(firebase.firestore.FieldPath.documentId(), ">=", startId)
+          .where(firebase.firestore.FieldPath.documentId(), "<=", endId)
+          .get(),
+        "preferencesRange-get-timeout"
+      );
+
+      // 古い取得要求が後から返ってきても、より新しい要求の表示を上書きしない。
+      if(requestId !== preferencesLoadRequestId) return false;
+
+      // 成功した時だけ、一時領域から本表示へ一括反映する。
+      const nextPreferences = {};
+      const nextPriorities = {};
+      dateStrs.forEach(ds=>{
+        nextPreferences[ds] = {};
+        nextPriorities[ds] = {};
+      });
+      snap.forEach(doc=>{
+        if(!wanted.has(doc.id)) return;
+        const data = doc.data() || {};
+        nextPreferences[doc.id] = data.wants || {};
+        nextPriorities[doc.id] = data.priority || {};
+      });
+
+      dateStrs.forEach(ds=>{
+        preferences[ds] = nextPreferences[ds];
+        priorities[ds] = nextPriorities[ds];
+      });
+
+      preferencesLoadState = "success";
+      preferencesLoadError = null;
+      return true;
+    }catch(e){
+      lastErr = e;
+      if(attempt < 2){
+        await new Promise(r=>setTimeout(r,600));
+      }
+    }
+  }
+
+  if(requestId !== preferencesLoadRequestId) return false;
+
+  // 2回とも失敗。既存のpreferencesは消さないが、通常の希望表としては表示しない。
+  preferencesLoadState = "error";
+  preferencesLoadError = lastErr || new Error("preferencesRange-get-timeout");
+  return false;
 }
 async function togglePreference(dateStr){
   if(!myName){ openNameModal(()=>togglePreference(dateStr)); return; }
@@ -3488,13 +3540,37 @@ function prefRowHtml(ds, editable){
     </div>`;
 }
 async function renderPrefPanel(el, skipReload){
-  if(!skipReload) el.innerHTML = `<div class="empty-note">読み込み中…</div>`;
+  if(!skipReload) el.innerHTML = `<div class="empty-note">希望表データを読み込み中…</div>`;
   const now = new Date();
   const thisM = { year: now.getFullYear(), month: now.getMonth() };
   const nextM = { year: now.getMonth()===11 ? now.getFullYear()+1 : now.getFullYear(), month: (now.getMonth()+1)%12 };
   const thisDates = monthDates(thisM.year, thisM.month).list.filter(isDutyDate);
   const nextDates = monthDates(nextM.year, nextM.month).list.filter(isDutyDate);
-  if(!skipReload) await loadPreferencesRange(thisDates.concat(nextDates));
+
+  if(!skipReload){
+    await loadPreferencesRange(thisDates.concat(nextDates));
+  }
+
+  if(preferencesLoadState==="error"){
+    const detail = errDetail(preferencesLoadError);
+    el.innerHTML = `
+      <div class="duty-section-title"><span class="title-text">休日管理 希望表</span></div>
+      <div class="empty-note" style="padding:24px 14px;">
+        <b style="display:block;margin-bottom:8px;">希望表データを取得できませんでした</b>
+        <span style="display:block;margin-bottom:12px;">「誰も希望していない」状態ではありません。通信上の理由で希望表を確認できていません。</span>
+        <small style="display:block;margin-bottom:14px;word-break:break-all;">${escapeHtml(detail)}</small>
+        <button id="retryPreferencesBtn" class="lock-btn">再取得</button>
+      </div>`;
+    const retryBtn=document.getElementById("retryPreferencesBtn");
+    if(retryBtn){
+      retryBtn.addEventListener("click", async ()=>{
+        preferencesLoadState="loading";
+        el.innerHTML=`<div class="empty-note">希望表データを再取得中…</div>`;
+        await renderPrefPanel(el,false);
+      });
+    }
+    return;
+  }
 
   const meBar = `
     <div class="me-bar">
