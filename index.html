@@ -667,7 +667,7 @@ html[data-theme="dark"] .cal-dow{ color:#c3cdc0; }
 html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
   
 </style>
-  <!-- ATLAS stable v8: iOS 18.7.10 preference-load failure guard -->
+  <!-- ATLAS stable v8: iOS 18.7.10 preference long-wait guard (single read / 30s) -->
 </head>
 <body>
 
@@ -1015,6 +1015,32 @@ function withDbTimeoutRetry(fn, tag, attempts){
     }
     throw lastErr;
   })();
+}
+
+/* 希望表専用の長待ち読込。
+   iPadOS 18.7.10ではFirestoreのreadが20〜30秒後に正常完了する実例があるため、
+   6秒タイムアウトで同じreadを再発行せず、最初の1本を最大30秒そのまま待つ。 */
+function withPreferenceLongWait(promise, tag, onSlow, onLong){
+  let settled = false;
+  const slowTimer = setTimeout(()=>{
+    if(!settled && typeof onSlow==="function") onSlow();
+  }, 6000);
+  const longTimer = setTimeout(()=>{
+    if(!settled && typeof onLong==="function") onLong();
+  }, 15000);
+
+  const guarded = Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject)=>setTimeout(()=>{
+      reject(Object.assign(new Error(tag||"preferencesRange-get-timeout"), {isTimeout:true}));
+    }, 30000))
+  ]);
+
+  return guarded.finally(()=>{
+    settled = true;
+    clearTimeout(slowTimer);
+    clearTimeout(longTimer);
+  });
 }
 
 /* ---------- 起動時の読み込み進捗表示 ---------- */
@@ -3225,56 +3251,61 @@ async function loadPreferencesRange(dateStrs){
   const endId = sorted[sorted.length-1];
   const wanted = new Set(dateStrs);
 
-  let lastErr = null;
-  for(let attempt=1; attempt<=2; attempt++){
-    try{
-      const snap = await withDbTimeout(
-        preferencesCol()
-          .where(firebase.firestore.FieldPath.documentId(), ">=", startId)
-          .where(firebase.firestore.FieldPath.documentId(), "<=", endId)
-          .get(),
-        "preferencesRange-get-timeout"
-      );
+  try{
+    const queryPromise = preferencesCol()
+      .where(firebase.firestore.FieldPath.documentId(), ">=", startId)
+      .where(firebase.firestore.FieldPath.documentId(), "<=", endId)
+      .get();
 
-      // 古い取得要求が後から返ってきても、より新しい要求の表示を上書きしない。
-      if(requestId !== preferencesLoadRequestId) return false;
-
-      // 成功した時だけ、一時領域から本表示へ一括反映する。
-      const nextPreferences = {};
-      const nextPriorities = {};
-      dateStrs.forEach(ds=>{
-        nextPreferences[ds] = {};
-        nextPriorities[ds] = {};
-      });
-      snap.forEach(doc=>{
-        if(!wanted.has(doc.id)) return;
-        const data = doc.data() || {};
-        nextPreferences[doc.id] = data.wants || {};
-        nextPriorities[doc.id] = data.priority || {};
-      });
-
-      dateStrs.forEach(ds=>{
-        preferences[ds] = nextPreferences[ds];
-        priorities[ds] = nextPriorities[ds];
-      });
-
-      preferencesLoadState = "success";
-      preferencesLoadError = null;
-      return true;
-    }catch(e){
-      lastErr = e;
-      if(attempt < 2){
-        await new Promise(r=>setTimeout(r,600));
+    const snap = await withPreferenceLongWait(
+      queryPromise,
+      "preferencesRange-get-timeout",
+      ()=>{
+        if(requestId !== preferencesLoadRequestId) return;
+        const el = document.getElementById("dutyMain");
+        if(el && dutySub==="pref"){
+          el.innerHTML = `<div class="empty-note">希望表データの読み込みに時間がかかっています…<br><small>処理は継続中です</small></div>`;
+        }
+      },
+      ()=>{
+        if(requestId !== preferencesLoadRequestId) return;
+        const el = document.getElementById("dutyMain");
+        if(el && dutySub==="pref"){
+          el.innerHTML = `<div class="empty-note">サーバー応答を待っています…<br><small>希望表データの取得処理は継続中です</small></div>`;
+        }
       }
-    }
+    );
+
+    if(requestId !== preferencesLoadRequestId) return false;
+
+    // 成功時だけ本表示へ一括反映する。
+    const nextPreferences = {};
+    const nextPriorities = {};
+    dateStrs.forEach(ds=>{
+      nextPreferences[ds] = {};
+      nextPriorities[ds] = {};
+    });
+    snap.forEach(doc=>{
+      if(!wanted.has(doc.id)) return;
+      const data = doc.data() || {};
+      nextPreferences[doc.id] = data.wants || {};
+      nextPriorities[doc.id] = data.priority || {};
+    });
+
+    dateStrs.forEach(ds=>{
+      preferences[ds] = nextPreferences[ds];
+      priorities[ds] = nextPriorities[ds];
+    });
+
+    preferencesLoadState = "success";
+    preferencesLoadError = null;
+    return true;
+  }catch(e){
+    if(requestId !== preferencesLoadRequestId) return false;
+    preferencesLoadState = "error";
+    preferencesLoadError = e || new Error("preferencesRange-get-timeout");
+    return false;
   }
-
-  if(requestId !== preferencesLoadRequestId) return false;
-
-  // 2回とも失敗。既存のpreferencesは消さないが、通常の希望表としては表示しない。
-  preferencesLoadState = "error";
-  preferencesLoadError = lastErr || new Error("preferencesRange-get-timeout");
-  return false;
 }
 async function togglePreference(dateStr){
   if(!myName){ openNameModal(()=>togglePreference(dateStr)); return; }
