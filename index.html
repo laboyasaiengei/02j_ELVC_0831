@@ -81,8 +81,28 @@
     display:flex; align-items:center; justify-content:space-between;
     gap:10px;
   }
-  .brand{font-weight:900; font-size:15.5px; letter-spacing:.02em;}
-  .brand-title-row{display:flex; align-items:center; gap:7px;}
+  .brand{font-weight:900; font-size:15.5px; letter-spacing:.02em; min-width:0;}
+  .brand-title-row{display:flex; align-items:center; min-width:0;}
+  .atlas-brand-logo{
+    display:block;
+    width:clamp(120px,30vw,178px);
+    height:auto;
+    max-height:31px;
+    object-fit:contain;
+    object-position:left center;
+  }
+  .brand-controls{
+    margin-left:auto;
+    display:flex;
+    align-items:center;
+    gap:7px;
+    flex:0 0 auto;
+  }
+  @media (max-width:390px){
+    .atlas-brand-logo{width:clamp(108px,31vw,142px);max-height:27px;}
+    .brand-controls{gap:5px;}
+    .date-pill{padding:3px 6px;font-size:9.5px;}
+  }
   .brand-sub{
   font-family: sans-serif;
   font-weight: 400;
@@ -96,7 +116,6 @@
     font-size:10.5px; color:#e7f0e6; background:rgba(255,255,255,.08);
     padding:3px 8px; border-radius:999px; white-space:nowrap;
   }
-    .brand-row > div:last-child{ margin-left:auto; }
 
   nav.tabs{
     display:flex; gap:4px; margin-top:8px;
@@ -686,13 +705,17 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 
 <header class="top">
   <div class="brand-row">
-  <div class="brand">
-    <span class="brand-title-row">圃場管理システム ATLAS<span class="date-pill" id="datePill">–</span></span>
-    <div class="brand-sub">Agricultural Task and Labor Administration System</div>
+    <div class="brand">
+      <span class="brand-title-row">
+        <img class="atlas-brand-logo" src="icons/atlas-logo.png" alt="ATLAS">
+      </span>
+      <div class="brand-sub">Agricultural Task and Labor Administration System</div>
+    </div>
+    <div class="brand-controls">
+      <span class="date-pill" id="datePill">–</span>
+      <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="テーマ切り替え"></button>
+    </div>
   </div>
-  <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="テーマ切り替え"></button>
-</div>
-</div>
   <div class="mode-switch" id="modeSwitch">
     <button data-mode="check" class="active">✅ 栽培管理</button>
     <button data-mode="duty">📅 当番管理</button>
