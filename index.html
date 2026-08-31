@@ -690,6 +690,11 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
   
   .progress-line{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;}
   .progress-line .small{margin-top:0;white-space:nowrap;}
+  .progress-complete-msg{
+  color:#c9e7a8;
+  font-weight:700;
+  white-space:nowrap;
+}
 </style>
   <!-- ATLAS stable v8: iOS 18.7.10 preference long-wait guard (single read / 30s) -->
 </head>
@@ -738,7 +743,11 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 
     <div class="sprout-wrap">
 <div class="progress-text">
-        <div class="progress-line"><div class="big" id="progressBig">0 / 0</div><div class="small" id="progressSmall">完了 / 全タスク</div></div>
+        <div class="progress-line">
+  <div class="big" id="progressBig">0 / 0</div>
+  <div class="small" id="progressSmall">完了</div>
+  <div class="small progress-complete-msg" id="progressCompleteMsg"></div>
+</div>
         <div class="bar-track"><div class="bar-fill" id="barFill" style="width:0%"></div></div>
       </div>
     </div>
@@ -2343,9 +2352,19 @@ function render(){
 
 function updateProgress(total,done){
   document.getElementById("progressBig").textContent=`${done} / ${total}`;
+
   const pct = total>0 ? Math.round(done/total*100) : 0;
   document.getElementById("barFill").style.width=pct+"%";
+
   document.getElementById("progressSmall").textContent = "完了 / 全タスク";
+
+  const completeMsg = document.getElementById("progressCompleteMsg");
+
+  if(total > 0 && done === total){
+    completeMsg.textContent = "すべて完了しました。おつかれさまでした";
+  }else{
+    completeMsg.textContent = "";
+  }
 }
 
 /* ---------- backups ---------- */
