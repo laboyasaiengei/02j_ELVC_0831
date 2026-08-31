@@ -11,7 +11,7 @@
 })();
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
-<title>圃場管理システム ATLAS</title>
+<title>栽培・当番管理システム ATLAS</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="shortcut icon" href="icons/favicon-32.png">
@@ -21,7 +21,7 @@
 <meta name="theme-color" content="#26402f">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="圃場管理システム ATLAS">
+<meta name="apple-mobile-web-app-title" content="栽培・当番管理システム ATLAS">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;600;700&display=swap">
@@ -685,6 +685,8 @@ html[data-theme="dark"] .cal-dow{ color:#c3cdc0; }
 .theme-toggle::before{ content:"🌙"; }
 html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
   
+  .progress-line{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;}
+  .progress-line .small{margin-top:0;white-space:nowrap;}
 </style>
   <!-- ATLAS stable v8: iOS 18.7.10 preference long-wait guard (single read / 30s) -->
 </head>
@@ -709,6 +711,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
       <span class="brand-title-row">
         <img class="atlas-brand-logo" src="icons/atlas-logo.png" alt="ATLAS">
       </span>
+      <div class="brand-sub">栽培・当番管理システム</div>
       <div class="brand-sub">Agricultural Task and Labor Administration System</div>
     </div>
     <div class="brand-controls">
@@ -731,8 +734,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
     <div class="sprout-wrap">
             <svg class="sprout-svg" id="sprout" width="42" height="42" viewBox="0 0 42 42"></svg>
       <div class="progress-text">
-        <div class="big" id="progressBig">0 / 0</div>
-        <div class="small" id="progressSmall">完了したタスク</div>
+        <div class="progress-line"><div class="big" id="progressBig">0 / 0</div><div class="small" id="progressSmall">完了 / 全タスク</div></div>
         <div class="bar-track"><div class="bar-fill" id="barFill" style="width:0%"></div></div>
       </div>
     </div>
@@ -2339,9 +2341,7 @@ function updateProgress(total,done){
   document.getElementById("progressBig").textContent=`${done} / ${total}`;
   const pct = total>0 ? Math.round(done/total*100) : 0;
   document.getElementById("barFill").style.width=pct+"%";
-  document.getElementById("progressSmall").textContent =
-    isHistoryMode() ? "完了したタスク" :
-    (pct===100 && total>0 ? `${INITIAL_DATA[currentTab].label}を完了しました。おつかれさまでした🍵` : "完了したタスク");
+  document.getElementById("progressSmall").textContent = "完了 / 全タスク";
   drawSprout(pct);
 }
 function drawSprout(pct){
@@ -2354,7 +2354,6 @@ function drawSprout(pct){
     <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="6"
       stroke-linecap="round" stroke-dasharray="${circ}" stroke-dashoffset="${off}"
       transform="rotate(-90 ${cx} ${cy})" style="transition:stroke-dashoffset .3s ease;"/>
-    <text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="11" font-weight="900" fill="#fff">${pct}</text>
   `;
 }
 
