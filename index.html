@@ -2352,16 +2352,12 @@ function render(){
 
 function updateProgress(total,done){
   document.getElementById("progressBig").textContent=`${done} / ${total}`;
-
   const pct = total>0 ? Math.round(done/total*100) : 0;
   document.getElementById("barFill").style.width=pct+"%";
-
-  document.getElementById("progressSmall").textContent = "完了 / 全タスク";
-
+  document.getElementById("progressSmall").textContent = "完了";
   const completeMsg = document.getElementById("progressCompleteMsg");
-
   if(total > 0 && done === total){
-    completeMsg.textContent = "すべて完了しました。おつかれさまでした";
+    completeMsg.textContent = "管理を完了しました。おつかれさまでした🍵";
   }else{
     completeMsg.textContent = "";
   }
