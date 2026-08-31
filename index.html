@@ -11,7 +11,7 @@
 })();
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
-<title>栽培・当番管理システム ATLAS</title>
+<title>圃場管理システム ATLAS</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="shortcut icon" href="icons/favicon-32.png">
@@ -21,7 +21,7 @@
 <meta name="theme-color" content="#26402f">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="栽培・当番管理システム ATLAS">
+<meta name="apple-mobile-web-app-title" content="圃場管理システム ATLAS">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;600;700&display=swap">
@@ -104,14 +104,16 @@
     .date-pill{padding:3px 6px;font-size:9.5px;}
   }
   .brand-sub{
-  font-family: sans-serif;
-  font-weight: 400;
-  font-size: 9.5px;
-  letter-spacing: .02em;
-  opacity: .75;
-  margin-top: 1px;
-  white-space: nowrap;
+  font-family:sans-serif;
+  font-weight:400;
+  font-size:9.5px;
+  letter-spacing:.02em;
+  opacity:.78;
+  line-height:1.1;
+  margin:0;
+  white-space:nowrap;
 }
+  .brand-sub-group{display:flex;flex-direction:column;gap:0;margin-top:1px;}
   .date-pill{
     font-size:10.5px; color:#e7f0e6; background:rgba(255,255,255,.08);
     padding:3px 8px; border-radius:999px; white-space:nowrap;
@@ -151,15 +153,16 @@
   .date-chip.has-data:not(.active){ border-color:rgba(166,214,171,.55); }
 
   .sprout-wrap{
-    display:flex; align-items:center; gap:10px;
-    background:rgba(255,255,255,.06);
-    margin:8px 0 0; padding:7px 11px; border-radius:12px;
-  }
-  .sprout-svg{flex:0 0 auto; width:30px; height:30px;}
-  .progress-text{flex:1; min-width:0;}
-  .progress-text .big{font-family:"Zen Maru Gothic",sans-serif; font-weight:900; font-size:14px; color:#fff; white-space:nowrap;}
+  display:block;
+  background:rgba(255,255,255,.06);
+  margin:6px 0 0;
+  padding:5px 10px 6px;
+  border-radius:10px;
+}
+  .progress-text{min-width:0;}
+  .progress-text .big{font-family:"Zen Maru Gothic",sans-serif; font-weight:900; font-size:13px; color:#fff; white-space:nowrap;}
   .progress-text .small{display:block; font-size:11px; color:#dfe9de; margin-top:4px; font-weight:600; min-height:14px; line-height:1.4;}
-  .bar-track{height:6px; border-radius:99px; background:rgba(255,255,255,.15); margin-top:4px; overflow:hidden;}
+  .bar-track{height:4px; border-radius:99px; background:rgba(255,255,255,.15); margin-top:3px; overflow:hidden;}
   .bar-fill{height:100%; background:linear-gradient(90deg,#8fc79a,#c9e7a8); border-radius:99px; transition:width .3s ease;}
 
   /* ---- top action bar (画面上部・ヘッダー内に固定表示) ---- */
@@ -711,8 +714,10 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
       <span class="brand-title-row">
         <img class="atlas-brand-logo" src="icons/atlas-logo.png" alt="ATLAS">
       </span>
-      <div class="brand-sub">栽培・当番管理システム</div>
-      <div class="brand-sub">Agricultural Task and Labor Administration System</div>
+      <div class="brand-sub-group">
+        <div class="brand-sub">圃場管理システム</div>
+        <div class="brand-sub">Agricultural Task and Labor Administration System</div>
+      </div>
     </div>
     <div class="brand-controls">
       <span class="date-pill" id="datePill">–</span>
@@ -732,8 +737,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
     </nav>
 
     <div class="sprout-wrap">
-            <svg class="sprout-svg" id="sprout" width="42" height="42" viewBox="0 0 42 42"></svg>
-      <div class="progress-text">
+<div class="progress-text">
         <div class="progress-line"><div class="big" id="progressBig">0 / 0</div><div class="small" id="progressSmall">完了 / 全タスク</div></div>
         <div class="bar-track"><div class="bar-fill" id="barFill" style="width:0%"></div></div>
       </div>
