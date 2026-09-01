@@ -529,11 +529,6 @@
   .pref-priority.on{ background:var(--bark); color:#fff; }
   .pref-readonly-mark{ flex:0 0 auto; font-size:11px; color:var(--ink-soft); white-space:nowrap; }
 
-  .score-table{ width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
-  .score-table th, .score-table td{ padding:10px 12px; font-size:13px; text-align:left; border-bottom:1px solid var(--line); }
-  .score-table th{ background:#eef0e5; color:var(--ink-soft); font-weight:700; font-size:11.5px; }
-  .score-table tr:last-child td{ border-bottom:none; }
-
   .cal-month-title{ font-family:"Zen Maru Gothic",sans-serif; font-weight:800; color:var(--soil-800); font-size:15px; margin:14px 0 8px; }
   .cal-grid{ display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px; width:100%; max-width:420px; margin:0 auto; box-sizing:border-box; }
   .cal-dow{ text-align:center; font-size:10.5px; color:var(--ink-soft); font-weight:700; padding-bottom:2px; }
@@ -568,7 +563,6 @@
   .special-date-row{ display:flex; align-items:center; gap:8px; padding:9px 2px; border-bottom:1px solid var(--line); font-size:12.5px; }
   .special-date-row .sd-date{ font-weight:700; color:var(--soil-800); width:78px; flex:0 0 auto; }
   .special-date-row .sd-label{ flex:1; color:var(--ink-soft); min-width:0; }
-  .special-date-row input[type=number]{ width:48px; border:1px solid var(--line); border-radius:8px; padding:5px; font-size:12.5px; text-align:center; }
   .special-date-row button{ border:none; background:none; color:#c9bfae; font-size:16px; cursor:pointer; }
   .roster-check-row{ display:flex; align-items:center; gap:9px; padding:8px 2px; border-bottom:1px solid var(--line); font-size:13.5px; }
   .roster-check-row input{ width:19px; height:19px; }
@@ -652,7 +646,6 @@ html[data-theme="dark"] .pref-status-badge.open{ background:var(--accent-soft); 
 html[data-theme="dark"] .pref-status-badge.closed{ background:var(--surface-2); }
 html[data-theme="dark"] .pref-deadline-big.passed{ color:var(--ink-soft); }
 html[data-theme="dark"] .pref-priority{ background:var(--surface-2); }
-html[data-theme="dark"] .score-table th{ background:var(--surface-2); }
 html[data-theme="dark"] .cal-cell.duty{ background:var(--warn-bg); border-color:var(--warn-border); }
 html[data-theme="dark"] .special-date-row button{ color:#7c8579; }
 html[data-theme="dark"] .record-entry-btn{ background:var(--accent-soft); color:#a6d6ab; }
@@ -765,7 +758,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
     <nav class="tabs" id="dutySubNav">
       <button data-dsub="pref" class="active">希望表</button>
       <button data-dsub="calendar">カレンダー</button>
-      <button data-dsub="score">スコア</button>
+      <button data-dsub="data">データ</button>
 
     </nav>
     <div class="top-actions" id="dutyTopActions">
@@ -871,15 +864,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
     <button class="modal-close" id="closeRosterModal">閉じる</button>
   </div>
 </div>
-<div class="modal-overlay" id="periodModal">
-  <div class="modal-sheet">
-    <div class="modal-title">集計期間を編集</div>
-    <div class="modal-sub">期間の追加・削除ができます(管理者のみ)。削除するとその期間の希望表・当番カレンダーのデータも完全に削除されます</div>
-    <button id="periodAddBtn" style="width:100%; border:none; background:var(--leaf-600); color:#fff; border-radius:10px; padding:11px; font-weight:700; cursor:pointer; margin-bottom:12px;">＋ 新しい期間を追加</button>
-    <div id="periodList"></div>
-    <button class="modal-close" id="closePeriodModal">閉じる</button>
-  </div>
-</div>
+
 <div class="modal-overlay" id="calendarDayModal">
   <div class="modal-sheet">
     <div class="modal-title" id="calDayTitle">日付</div>
@@ -2586,7 +2571,7 @@ document.getElementById("closeModal").addEventListener("click", ()=>{
 });
 
 /* =========================================================================
-   当番管理モジュール (希望表 / スコア / カレンダー)
+   当番管理モジュール (希望表 / カレンダー / データ)
    ========================================================================= */
 
 /* ---- 権限まわり(簡易パスワード。必要に応じて下の値を書き換えてください) ---- */
@@ -2802,159 +2787,13 @@ document.getElementById("rosterAddBtn").addEventListener("click", async ()=>{
 document.getElementById("closeRosterModal").addEventListener("click", ()=>{
   document.getElementById("rosterModal").classList.remove("show");
 });
-  function openPeriodModal(){
-  renderPeriodList();
-  document.getElementById("periodModal").classList.add("show");
-}
-function renderPeriodList(){
-  const listEl = document.getElementById("periodList");
-  listEl.innerHTML = fiscalPresets.map(p=>`
-    <div class="backup-item">
-      <div class="info">${periodLabelFor(p)}<small>削除するとこの期間の希望表・当番カレンダーも消えます</small></div>
-      <button data-period-del="${p.id}">削除</button>
-    </div>`).join("") || `<div class="empty-note">まだ期間がありません</div>`;
-  listEl.querySelectorAll("[data-period-del]").forEach(btn=>{
-    btn.addEventListener("click", async ()=>{
-      const id = btn.getAttribute("data-period-del");
-      const p = fiscalPresets.find(x=>x.id===id);
-      if(!p) return;
-      if(!confirm(`「${periodLabelFor(p)}」を削除します。この期間の希望表・当番カレンダーのデータも完全に削除され、元に戻せません。よろしいですか？`)) return;
-      try{
-        await purgeDutyDataForPeriod(p);
-        fiscalPresets = fiscalPresets.filter(x=>x.id!==id);
-        if(selectedPeriodId===id) selectedPeriodId = fiscalPresets[0] ? fiscalPresets[0].id : null;
-        await saveFiscalPresets();
-        scheduleDutyAutoBackup();
-        showToast("期間を削除しました");
-        renderPeriodList();
-        renderDutyPanel();
-      }catch(e){
-        toastFail("集計期間の削除", e);
-      }
-    });
-  });
-}
-document.getElementById("periodAddBtn").addEventListener("click", async ()=>{
-  const startVal = prompt("開始の年月を「年-月」の形式で入力してください(例: 2026-4)");
-  if(startVal===null) return;
-  const startParts = startVal.split("-").map(s=>parseInt(String(s).trim(),10));
-  const sy=startParts[0], sm=startParts[1];
-  if(isNaN(sy) || isNaN(sm) || sm<1 || sm>12){ showToast("「年-月」の形式で入力してください(例: 2026-4)"); return; }
-  const endVal = prompt("終了の年月を「年-月」の形式で入力してください(例: 2027-3)");
-  if(endVal===null) return;
-  const endParts = endVal.split("-").map(s=>parseInt(String(s).trim(),10));
-  const ey=endParts[0], em=endParts[1];
-  if(isNaN(ey) || isNaN(em) || em<1 || em>12){ showToast("「年-月」の形式で入力してください(例: 2027-3)"); return; }
-  if(ey*12+(em-1) < sy*12+(sm-1)){ showToast("終了は開始より後の年月にしてください"); return; }
-  const newPeriod = { id: genId("fp"), startYear: sy, startMonth: sm, endYear: ey, endMonth: em };
-  if(!confirm(`「${periodLabelFor(newPeriod)}」として保存します。よろしいですか？`)) return;
-  fiscalPresets.push(newPeriod);
-  selectedPeriodId = newPeriod.id;
-  fiscalStartYear = sy; fiscalStartMonth = sm; fiscalEndYear = ey; fiscalEndMonth = em;
-  await saveFiscalPresets();
-  await saveFiscalSettings();
-  scheduleDutyAutoBackup();
-  showToast("期間を追加しました");
-  renderPeriodList();
-  renderDutyPanel();
-});
-document.getElementById("closePeriodModal").addEventListener("click", ()=>{
-  document.getElementById("periodModal").classList.remove("show");
-});
 
-/* ---- 年度設定(スコアの集計期間) ---- */
-let fiscalStartMonth = 4; // 1-12。既定は4月始まり
-let fiscalStartYear = 2000;  // 期間の長さを計算するための基準値(実際の暦年とは無関係)
-let fiscalEndMonth = 3;      // 1-12
-let fiscalEndYear = 2001;    // 期間の長さを計算するための基準値
-function fiscalSettingsRef(){ return db.collection("duty_settings").doc("fiscal"); }
-async function loadFiscalSettings(){
-  try{
-    const snap = await withDbTimeout(fiscalSettingsRef().get(), "fiscalSettings-get-timeout");
-    const data = snap.exists ? snap.data() : null;
-    if(data && typeof data.startMonth==="number"){
-      fiscalStartMonth = data.startMonth;
-      fiscalStartYear = typeof data.startYear==="number" ? data.startYear : 2000;
-      if(typeof data.endMonth==="number" && typeof data.endYear==="number"){
-        fiscalEndMonth = data.endMonth;
-        fiscalEndYear = data.endYear;
-      }else{
-        // 旧データ(終了月が未設定)からの移行: これまで通り12か月分の期間として補完
-        fiscalEndMonth = fiscalStartMonth===1 ? 12 : fiscalStartMonth-1;
-        fiscalEndYear = fiscalStartMonth===1 ? fiscalStartYear : fiscalStartYear+1;
-      }
-    }else{
-      await saveFiscalSettings();
-    }
-  }catch(e){ /* オフライン時などは既定値のまま */ }
-}
-async function saveFiscalSettings(){
-  try{
-    await withDbTimeout(fiscalSettingsRef().set({
-      startMonth: fiscalStartMonth,
-      startYear: fiscalStartYear,
-      endMonth: fiscalEndMonth,
-      endYear: fiscalEndYear
-    }), "fiscalSettings-set-timeout");
-  }catch(e){ toastFail("年度設定の保存", e); }
-}
-
-function fiscalDurationMonths(){
-  const startAbs = fiscalStartYear*12 + (fiscalStartMonth-1);
-  const endAbs = fiscalEndYear*12 + (fiscalEndMonth-1);
-  let d = endAbs - startAbs + 1;
-  if(d<=0) d += 12; // 設定不備の保険(終了が開始より前になっている場合)
-  return d;
-}
-function fiscalYearForDate(dateStr){
-  const d = new Date(dateStr+"T00:00:00");
-  const y = d.getFullYear(), m = d.getMonth()+1;
-  const duration = fiscalDurationMonths();
-  const dateAbs = y*12 + (m-1);
-  const startThis = y*12 + (fiscalStartMonth-1);
-  const startPrev = (y-1)*12 + (fiscalStartMonth-1);
-  if(dateAbs >= startThis && dateAbs < startThis+duration) return y;
-  if(dateAbs >= startPrev && dateAbs < startPrev+duration) return y-1;
-  return null; // 期間の対象外(集計期間が12か月未満のときの隙間)
-}
-function addMonthsYM(year, month, delta){
-  const abs = year*12 + (month-1) + delta;
-  return { year: Math.floor(abs/12), month: (abs%12)+1 };
-}
-function fiscalPresetsRef(){ return db.collection("duty_settings").doc("fiscalPresets"); }
-async function loadFiscalPresets(){
-  try{
-    const snap = await withDbTimeout(fiscalPresetsRef().get(), "fiscalPresets-get-timeout");
-    if(snap.exists && Array.isArray(snap.data().list) && snap.data().list.length){
-      fiscalPresets = snap.data().list;
-    }else{
-      const migrated = { id: genId("fp"), startYear: fiscalStartYear, startMonth: fiscalStartMonth, endYear: fiscalEndYear, endMonth: fiscalEndMonth };
-      fiscalPresets = [migrated];
-      await saveFiscalPresets();
-    }
-  }catch(e){ /* オフライン時は空のまま */ }
-}
-async function saveFiscalPresets(){
-  try{ await withDbTimeout(fiscalPresetsRef().set({ list: fiscalPresets }), "fiscalPresets-set-timeout"); }
-  catch(e){ toastFail("集計期間の保存", e); }
-}
-function periodLabelFor(p){ return `${p.startYear}年${p.startMonth}月〜${p.endYear}年${p.endMonth}月`; }
-function dateInPeriod(dateStr, p){
-  const d = new Date(dateStr+"T00:00:00");
-  const y=d.getFullYear(), m=d.getMonth()+1;
-  const dateAbs = y*12+(m-1);
-  const startAbs = p.startYear*12+(p.startMonth-1);
-  const endAbs = p.endYear*12+(p.endMonth-1);
-  return dateAbs>=startAbs && dateAbs<=endAbs;
-}
-
-/* ---- 当番管理(名簿・特別な日・年度設定)の 元に戻す / バックアップ / 復元 ---- */
+/* ---- 当番管理(名簿・特別な日)の 元に戻す / バックアップ / 復元 ---- */
 let dutyUndoStack = [];
 function dutySnapshot(){
   return {
     roster: roster.slice(),
-    specialDates: JSON.parse(JSON.stringify(specialDates)),
-    fiscalStartMonth, fiscalStartYear, fiscalEndMonth, fiscalEndYear
+    specialDates: JSON.parse(JSON.stringify(specialDates))
   };
 }
 function pushDutyUndo(){
@@ -2980,12 +2819,7 @@ async function undoDuty(){
   if(dutyUndoStack.length===0) return;
   const prev = dutyUndoStack.pop();
   roster = prev.roster;
-  fiscalStartMonth = prev.fiscalStartMonth;
-  fiscalStartYear = prev.fiscalStartYear;
-  fiscalEndMonth = prev.fiscalEndMonth;
-  fiscalEndYear = prev.fiscalEndYear;
   await saveRoster();
-  await saveFiscalSettings();
   await applySpecialDatesSnapshot(prev.specialDates);
   updateDutyUndoBtn();
   renderDutyPanel();
@@ -2998,8 +2832,6 @@ async function createDutyBackup(silent){
     await dutyBackupsCol().add({
       roster: roster.slice(),
       specialDates: JSON.parse(JSON.stringify(specialDates)),
-      fiscalStartMonth, fiscalStartYear, fiscalEndMonth, fiscalEndYear,
-      fiscalPresets: JSON.parse(JSON.stringify(fiscalPresets)),
       auto: !!silent,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
@@ -3056,28 +2888,18 @@ function renderDutyBackupListPage(){
     const label = `${ts.getMonth()+1}/${ts.getDate()} ${pad(ts.getHours())}:${pad(ts.getMinutes())} ${data.auto?"(自動保存)":"(手動保存)"}`;
     const item = document.createElement("div");
     item.className = "backup-item";
-    item.innerHTML = `<div class="info">${label}<small>復元すると名簿・特例日・年度設定が入れ替わります</small></div><button data-duty-restore="${doc.id}">復元</button>`;
+    item.innerHTML = `<div class="info">${label}<small>復元すると名簿・特例日が入れ替わります</small></div><button data-duty-restore="${doc.id}">復元</button>`;
     listEl.appendChild(item);
   });
   listEl.querySelectorAll("[data-duty-restore]").forEach(btn=>{
     btn.addEventListener("click", async ()=>{
-      if(!confirm("このバックアップの内容で復元します。今の名簿・特例日・年度設定は上書きされます。よろしいですか？")) return;
+      if(!confirm("このバックアップの内容で復元します。今の名簿・特例日は上書きされます。よろしいですか？")) return;
       try{
         const snap = await dutyBackupsCol().doc(btn.getAttribute("data-duty-restore")).get();
         const data = snap.data();
         pushDutyUndo();
         roster = data.roster || roster;
-        fiscalStartMonth = typeof data.fiscalStartMonth==="number" ? data.fiscalStartMonth : fiscalStartMonth;
-              fiscalStartYear = typeof data.fiscalStartYear==="number" ? data.fiscalStartYear : fiscalStartYear;
-              fiscalEndMonth = typeof data.fiscalEndMonth==="number" ? data.fiscalEndMonth : fiscalEndMonth;
-              fiscalEndYear = typeof data.fiscalEndYear==="number" ? data.fiscalEndYear : fiscalEndYear;
         await saveRoster();
-        await saveFiscalSettings();
-        await saveFiscalSettings();
-        if(Array.isArray(data.fiscalPresets)){
-          fiscalPresets = data.fiscalPresets;
-          await saveFiscalPresets();
-        }
         await applySpecialDatesSnapshot(data.specialDates || {});
         document.getElementById("dutyRestoreModal").classList.remove("show");
         renderDutyPanel();
@@ -3182,8 +3004,8 @@ function japaneseHolidayName(d){
   return holidayMapForYear(d.getFullYear())[dateKey(d)] || null;
 }
 
-/* ---- 特別な日(追加の管理日・ポイント上書き) ---- */
-let specialDates = {}; // { "YYYY-MM-DD": {custom:bool, points:number, label:string} }
+/* ---- 特別な日(追加の管理日) ---- */
+let specialDates = {}; // { "YYYY-MM-DD": {custom:bool, label:string} }
 function specialDatesCol(){ return db.collection("special_dates"); }
 async function loadSpecialDates(){
   try{
@@ -3200,10 +3022,7 @@ function isDutyDate(dateStr){
   if(specialDates[dateStr] && specialDates[dateStr].custom) return true;
   return false;
 }
-function pointsForDate(dateStr){
-  const sd = specialDates[dateStr];
-  return (sd && typeof sd.points==="number") ? sd.points : 1;
-}
+
 function labelForDate(dateStr){
   const d = new Date(dateStr+"T00:00:00");
   const h = japaneseHolidayName(d);
@@ -3448,33 +3267,23 @@ async function loadCalendarRange(dateStrs){
     });
   }catch(e){ /* オフライン/タイムアウト時は既存キャッシュのまま */ }
 }
-async function loadAllCalendarForScore(){
+async function loadAllCalendarForCount(){
   try{
-    const snap = await withDbTimeout(calendarCol().get(), "calendarAll-get-timeout");
-    const map={};
-    snap.forEach(doc=>{ map[doc.id] = Array.isArray(doc.data().people) ? doc.data().people : []; });
-    return map;
-  }catch(e){ return calendarAssign; }
-}
-async function loadAllCalendarForScore(){
-  try{
-    const snap = await calendarCol().get();
-    const map={};
-    snap.forEach(doc=>{ map[doc.id] = Array.isArray(doc.data().people) ? doc.data().people : []; });
-    return map;
-  }catch(e){ return calendarAssign; }
-}
-async function purgeDutyDataForPeriod(period){
-  const collections = [preferencesCol(), calendarCol()];
-  for(const col of collections){
-    const snap = await col.get();
-    const deletions = [];
+    const snap = await withDbTimeout(
+      calendarCol().get(),
+      "calendarAll-get-timeout"
+    );
+
+    const map = {};
     snap.forEach(doc=>{
-      if(dateInPeriod(doc.id, period)){
-        deletions.push(col.doc(doc.id).delete());
-      }
+      map[doc.id] = Array.isArray(doc.data().people)
+        ? doc.data().people
+        : [];
     });
-    await Promise.all(deletions);
+
+    return map;
+  }catch(e){
+    return calendarAssign;
   }
 }
 async function saveCalendarDay(dateStr, people, markChanged){
@@ -3563,9 +3372,24 @@ async function renderDutyPanel(){
   const el = document.getElementById("dutyMain");
   const topActions = document.getElementById("dutyTopActions");
   if(topActions) topActions.style.display = isAdmin ? "" : "none";
-  if(dutySub==="pref") await renderPrefPanel(el);
-  else if(dutySub==="score") await renderScorePanel(el);
-  else await renderCalendarPanel(el);
+  if(dutySub==="pref"){
+  await renderPrefPanel(el);
+}else if(dutySub==="data"){
+  renderDataPanel(el);
+}else{
+  await renderCalendarPanel(el);
+}
+}
+
+function renderDataPanel(el){
+  el.innerHTML = `
+    <div class="duty-section-title">
+      <span class="title-text">データ</span>
+    </div>
+    <div class="empty-note">
+      データ表示機能は今後ここに追加します
+    </div>
+  `;
 }
 
 /* ---- 希望表パネル(今月・来月を分けて表示) ---- */
@@ -3746,98 +3570,6 @@ async function renderPrefPanel(el, skipReload){
     renderPrefPanel(el);
   });
 }
-
-/* ---- スコアパネル ---- */
-let fiscalPresets = []; // [{id, startYear, startMonth, endYear, endMonth}]
-let selectedPeriodId = null; // 表示中の期間(未選択なら保存済みの先頭を使う)
-async function renderScorePanel(el){
-  el.innerHTML = `<div class="empty-note">読み込み中…</div>`;
-  const allCal = await loadAllCalendarForScore();
-  const currentPeriodId = (selectedPeriodId && fiscalPresets.some(p=>p.id===selectedPeriodId))
-    ? selectedPeriodId
-    : (fiscalPresets[0] ? fiscalPresets[0].id : null);
-  const currentPeriod = fiscalPresets.find(p=>p.id===currentPeriodId) || null;
-  const scores = {}, counts = {};
-  roster.forEach(n=>{ scores[n]=0; counts[n]=0; });
-  if(currentPeriod){
-    Object.keys(allCal).forEach(ds=>{
-      if(!dateInPeriod(ds, currentPeriod)) return;
-      const pts = pointsForDate(ds);
-      (allCal[ds]||[]).forEach(name=>{
-        if(!(name in scores)){ scores[name]=0; counts[name]=0; }
-        scores[name]+=pts;
-        counts[name]+=1;
-      });
-    });
-  }
-  const sorted = Object.keys(scores).sort((a,b)=>scores[b]-scores[a]);
-  const rowsHtml = sorted.map((name)=>`
-    <tr>
-      <td>${escapeHtml(name)}</td>
-      <td>${counts[name]}回</td>
-      <td><b>${scores[name]}</b>pt</td>
-    </tr>`).join("");
-  el.innerHTML = `
-    <div class="duty-section-title"><span class="title-text">スコア</span>
-      <span class="duty-actions">
-        <button class="lock-btn" id="adminLockBtn">${isAdmin?"🔓 管理者モード解除":"🔒 管理者パスワード入力"}</button>
-      </span>
-    </div>
-    ${isAdmin ? `
-    <div class="duty-actions-row"><div class="scroll-row">
-      <button class="lock-btn" id="rosterBtn">🔒 名簿を管理</button>
-      <button class="lock-btn" id="pwChangeBtn">🔒 パスワード変更</button>
-      <button class="lock-btn" id="restorePwChangeBtn">🔒 復元パスコード変更</button>
-    </div></div>` : ``}
-    <div class="me-bar">
-      集計期間:
-      <select id="periodSelect" style="border:1px solid var(--line); border-radius:8px; padding:5px 8px; font-size:12.5px;">
-        ${fiscalPresets.map(p=>`<option value="${p.id}" ${p.id===currentPeriodId?"selected":""}>${periodLabelFor(p)}</option>`).join("") || `<option value="">未設定</option>`}
-      </select>
-      ${isAdmin ? `<button id="editPeriodBtn" class="lock-btn">🔒 編集</button>` : ``}
-    </div>
-    <table class="score-table">
-      <thead><tr><th>名前</th><th>回数</th><th>スコア</th></tr></thead>
-      <tbody>${rowsHtml || `<tr><td colspan="3" class="empty-note">この期間の当番記録がありません</td></tr>`}</tbody>
-    </table>
-    <div class="empty-note">基本は1日1ポイント、お盆や年末年始などはポイントアップします。集計は${currentPeriod ? periodLabelFor(currentPeriod) : "選択した"}の期間で記録されます</div>
-  `;
-  document.getElementById("adminLockBtn").addEventListener("click", ()=>{
-    if(isAdmin) lockAdmin(); else unlockAdmin();
-  });
-  const rosterBtnEl = document.getElementById("rosterBtn");
-  if(rosterBtnEl){
-    rosterBtnEl.addEventListener("click", ()=>{
-      if(!unlockAdmin()) return;
-      openRosterModal();
-    });
-  }
-  const pwChangeBtnEl = document.getElementById("pwChangeBtn");
-  if(pwChangeBtnEl){
-    pwChangeBtnEl.addEventListener("click", ()=>{
-      if(!unlockAdmin()) return;
-      changeAdminPassword();
-    });
-  }
-  const restorePwChangeBtnEl = document.getElementById("restorePwChangeBtn");
-  if(restorePwChangeBtnEl){
-    restorePwChangeBtnEl.addEventListener("click", ()=>{
-      if(!unlockAdmin()) return;
-      startChangeRestorePasscode();
-    });
-  }
-  document.getElementById("periodSelect").addEventListener("change", (e)=>{
-    selectedPeriodId = e.target.value;
-    renderScorePanel(el);
-  });
-  const editPeriodBtnEl = document.getElementById("editPeriodBtn");
-  if(editPeriodBtnEl){
-    editPeriodBtnEl.addEventListener("click", ()=>{
-      if(!unlockAdmin()) return;
-      openPeriodModal();
-    });
-  }
-}
 /* ---- 特例日 管理モーダル ---- */
 function openSpecialDateModal(){
   const formEl = document.getElementById("specialDateForm");
@@ -3845,7 +3577,6 @@ function openSpecialDateModal(){
     <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
       <input type="date" id="sdNewDate" style="flex:1; min-width:140px; border:1px solid var(--line); border-radius:10px; padding:9px;">
       <input type="text" id="sdNewLabel" placeholder="名前(例: お盆)" style="flex:1; min-width:110px; border:1px solid var(--line); border-radius:10px; padding:9px;">
-      <input type="number" id="sdNewPoints" placeholder="pt" value="1" style="width:60px; border:1px solid var(--line); border-radius:10px; padding:9px;">
       <button id="sdAddBtn" style="border:none; background:var(--leaf-600); color:#fff; border-radius:10px; padding:9px 14px; font-weight:700;">追加/更新</button>
     </div>
   `;
@@ -3854,13 +3585,11 @@ function openSpecialDateModal(){
     const ds = document.getElementById("sdNewDate").value;
     if(!ds){ showToast("日付を選んでください"); return; }
     const label = document.getElementById("sdNewLabel").value.trim();
-    const pts = parseFloat(document.getElementById("sdNewPoints").value);
     const existing = specialDates[ds] || {};
     const data = {
-      custom: existing.custom || !isDutyDate(ds) ? true : (existing.custom||false),
-      points: isNaN(pts) ? 1 : pts,
-      label: label
-    };
+  custom: existing.custom || !isDutyDate(ds) ? true : (existing.custom||false),
+  label: label
+};
     // 元々土日祝でない日を追加した場合は「管理が必要な日」として扱う
     if(!isWeekend(new Date(ds+"T00:00:00")) && !japaneseHolidayName(new Date(ds+"T00:00:00"))) data.custom = true;
     pushDutyUndo();
@@ -3884,20 +3613,10 @@ function renderSpecialDateList(){
       <div class="special-date-row">
         <div class="sd-date">${ds}</div>
         <div class="sd-label">${escapeHtml(sd.label||"")}${sd.custom?" (追加日)":""}</div>
-        <input type="number" value="${typeof sd.points==='number'?sd.points:1}" data-sd-points="${ds}">
         <button data-sd-del="${ds}">×</button>
       </div>`;
   }).join("") : `<div class="empty-note">まだ登録がありません</div>`;
-  listEl.querySelectorAll("[data-sd-points]").forEach(inp=>{
-    inp.addEventListener("change", async ()=>{
-      const ds = inp.getAttribute("data-sd-points");
-      const pts = parseFloat(inp.value);
-      pushDutyUndo();
-      specialDates[ds] = Object.assign({}, specialDates[ds], { points: isNaN(pts)?1:pts });
-      try{ await specialDatesCol().doc(ds).set(specialDates[ds]); scheduleDutyAutoBackup(); showToast("更新しました"); }
-      catch(e){ toastFail("特例日ポイントの保存", e); }
-    });
-  });
+  
   listEl.querySelectorAll("[data-sd-del]").forEach(btn=>{
     btn.addEventListener("click", async ()=>{
       const ds = btn.getAttribute("data-sd-del");
@@ -4064,7 +3783,6 @@ async function openCalendarDayModal(ds){
   const dow = ["日","月","火","水","木","金","土"][d.getDay()];
   const duty = isDutyDate(ds);
   const label = labelForDate(ds);
-  const pts = pointsForDate(ds);
   const wants = preferences[ds] || {};
   const wanterNames = Object.keys(wants).filter(n=>wants[n]);
   const prio = priorities[ds] || {};
@@ -4085,17 +3803,14 @@ async function openCalendarDayModal(ds){
   if(isAdmin){
     bodyEl.innerHTML = infoHtml + `<div class="empty-note">読み込み中…</div>`;
     document.getElementById("calendarDayModal").classList.add("show");
-
-        // 選択中の集計期間内での、これまでの累計当番回数を人ごとに集計(割り振りの参考用)
-    const allCal = await loadAllCalendarForScore();
-    const currentPeriod = (selectedPeriodId && fiscalPresets.some(p=>p.id===selectedPeriodId))
-      ? fiscalPresets.find(p=>p.id===selectedPeriodId)
-      : (fiscalPresets[0] || null);
+    // 保存されている全期間の累積当番回数を人ごとに集計（割り振りの参考用）
+    const allCal = await loadAllCalendarForCount();
     const counts = {};
     roster.forEach(n=>{ counts[n]=0; });
     Object.keys(allCal).forEach(otherDs=>{
-      if(currentPeriod && !dateInPeriod(otherDs, currentPeriod)) return;
-      (allCal[otherDs]||[]).forEach(name=>{ counts[name]=(counts[name]||0)+1; });
+      (allCal[otherDs]||[]).forEach(name=>{
+        counts[name]=(counts[name]||0)+1;
+      });
     });
 
     // この日に当番・すでに割り当て済みの人だけを候補にする。優先希望の人を先頭に並べる
@@ -4498,11 +4213,7 @@ document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
         if(settled) return;
         setupConnectionBanner();
         setLoadingStep("各種データを読み込み中…" + attemptTag);
-        // loadFiscalPresetsはloadFiscalSettingsの結果(移行処理)に依存するため、
-        // それ以外の読み込みと一緒に並列化して待ち時間を短縮する
-        await Promise.all([loadRoster(), loadSpecialDates(), loadAdminPassword(), loadRestorePasscode(), loadFiscalSettings(), loadPrefDeadline()]);
-        if(settled) return;
-        await loadFiscalPresets();
+        await Promise.all([loadRoster(), loadSpecialDates(), loadAdminPassword(), loadRestorePasscode(), loadPrefDeadline()]);
         if(settled) return;
         setLoadingStep("画面を準備中…" + attemptTag);
         await loadTab(currentTab);
