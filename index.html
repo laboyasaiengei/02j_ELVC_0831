@@ -528,6 +528,28 @@
   .pref-priority{ flex:0 0 auto; border:1px solid var(--bark); background:#fff; color:var(--bark); border-radius:999px; padding:8px 10px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap; }
   .pref-priority.on{ background:var(--bark); color:#fff; }
   .pref-readonly-mark{ flex:0 0 auto; font-size:11px; color:var(--ink-soft); white-space:nowrap; }
+  .data-count-table{
+    width:100%;
+    border-collapse:collapse;
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+    overflow:hidden;
+  }
+  .data-count-table th,
+  .data-count-table td{
+    padding:10px 12px;
+    font-size:13px;
+    text-align:left;
+    border-bottom:1px solid var(--line);
+  }
+  .data-count-table th{
+    background:#eef0e5;
+    color:var(--ink-soft);
+    font-weight:700;
+    font-size:11.5px;
+  }
+  .data-count-table tr:last-child td{border-bottom:none;}
 
   .cal-month-title{ font-family:"Zen Maru Gothic",sans-serif; font-weight:800; color:var(--soil-800); font-size:15px; margin:14px 0 8px; }
   .cal-grid{ display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px; width:100%; max-width:420px; margin:0 auto; box-sizing:border-box; }
@@ -646,6 +668,7 @@ html[data-theme="dark"] .pref-status-badge.open{ background:var(--accent-soft); 
 html[data-theme="dark"] .pref-status-badge.closed{ background:var(--surface-2); }
 html[data-theme="dark"] .pref-deadline-big.passed{ color:var(--ink-soft); }
 html[data-theme="dark"] .pref-priority{ background:var(--surface-2); }
+html[data-theme="dark"] .data-count-table th{ background:var(--surface-2); }
 html[data-theme="dark"] .cal-cell.duty{ background:var(--warn-bg); border-color:var(--warn-border); }
 html[data-theme="dark"] .special-date-row button{ color:#7c8579; }
 html[data-theme="dark"] .record-entry-btn{ background:var(--accent-soft); color:#a6d6ab; }
@@ -3005,7 +3028,7 @@ function japaneseHolidayName(d){
 }
 
 /* ---- 特別な日(追加の管理日) ---- */
-let specialDates = {}; // { "YYYY-MM-DD": {custom:bool, label:string} }
+let specialDates = {}; // { "YYYY-MM-DD": {custom:bool, points:number, label:string} }
 function specialDatesCol(){ return db.collection("special_dates"); }
 async function loadSpecialDates(){
   try{
@@ -3375,21 +3398,81 @@ async function renderDutyPanel(){
   if(dutySub==="pref"){
   await renderPrefPanel(el);
 }else if(dutySub==="data"){
-  renderDataPanel(el);
+  await renderDataPanel(el);
 }else{
   await renderCalendarPanel(el);
 }
 }
 
-function renderDataPanel(el){
+async function renderDataPanel(el){
+  el.innerHTML = `<div class="empty-note">読み込み中…</div>`;
+
+  const allCal = await loadAllCalendarForCount();
+  const counts = {};
+  roster.forEach(n=>{ counts[n]=0; });
+
+  Object.keys(allCal).forEach(ds=>{
+    (allCal[ds]||[]).forEach(name=>{
+      counts[name] = (counts[name]||0) + 1;
+    });
+  });
+
+  const rowsHtml = roster.map(name=>`
+    <tr>
+      <td>${escapeHtml(name)}</td>
+      <td><b>${counts[name]||0}</b>回</td>
+    </tr>
+  `).join("");
+
   el.innerHTML = `
     <div class="duty-section-title">
       <span class="title-text">データ</span>
+      <span class="duty-actions">
+        <button class="lock-btn" id="adminLockBtn">${isAdmin?"🔓 管理者モード解除":"🔒 管理者パスワード入力"}</button>
+      </span>
     </div>
-    <div class="empty-note">
-      データ表示機能は今後ここに追加します
-    </div>
+
+    ${isAdmin ? `
+    <div class="duty-actions-row"><div class="scroll-row">
+      <button class="lock-btn" id="rosterBtn">🔒 名簿を管理</button>
+      <button class="lock-btn" id="pwChangeBtn">🔒 パスワード変更</button>
+      <button class="lock-btn" id="restorePwChangeBtn">🔒 復元パスコード変更</button>
+    </div></div>` : ``}
+
+    <div class="cal-month-title">累積担当回数</div>
+    <table class="data-count-table">
+      <thead><tr><th>名前</th><th>累積担当回数</th></tr></thead>
+      <tbody>${rowsHtml || `<tr><td colspan="2" class="empty-note">名簿に登録がありません</td></tr>`}</tbody>
+    </table>
   `;
+
+  document.getElementById("adminLockBtn").addEventListener("click", ()=>{
+    if(isAdmin) lockAdmin(); else unlockAdmin();
+  });
+
+  const rosterBtnEl = document.getElementById("rosterBtn");
+  if(rosterBtnEl){
+    rosterBtnEl.addEventListener("click", ()=>{
+      if(!unlockAdmin()) return;
+      openRosterModal();
+    });
+  }
+
+  const pwChangeBtnEl = document.getElementById("pwChangeBtn");
+  if(pwChangeBtnEl){
+    pwChangeBtnEl.addEventListener("click", ()=>{
+      if(!unlockAdmin()) return;
+      changeAdminPassword();
+    });
+  }
+
+  const restorePwChangeBtnEl = document.getElementById("restorePwChangeBtn");
+  if(restorePwChangeBtnEl){
+    restorePwChangeBtnEl.addEventListener("click", ()=>{
+      if(!unlockAdmin()) return;
+      startChangeRestorePasscode();
+    });
+  }
 }
 
 /* ---- 希望表パネル(今月・来月を分けて表示) ---- */
@@ -3570,6 +3653,8 @@ async function renderPrefPanel(el, skipReload){
     renderPrefPanel(el);
   });
 }
+
+
 /* ---- 特例日 管理モーダル ---- */
 function openSpecialDateModal(){
   const formEl = document.getElementById("specialDateForm");
@@ -3803,7 +3888,7 @@ async function openCalendarDayModal(ds){
   if(isAdmin){
     bodyEl.innerHTML = infoHtml + `<div class="empty-note">読み込み中…</div>`;
     document.getElementById("calendarDayModal").classList.add("show");
-    // 保存されている全期間の累積当番回数を人ごとに集計（割り振りの参考用）
+    // 保存されている全期間の累積担当回数を人ごとに集計（割り振りの参考用）
     const allCal = await loadAllCalendarForCount();
     const counts = {};
     roster.forEach(n=>{ counts[n]=0; });
