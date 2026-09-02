@@ -3879,10 +3879,10 @@ async function openCalendarDayModal(ds){
   const wanterNamesHtml = wanterNames.slice().sort((a,b)=>(prio[b]?1:0)-(prio[a]?1:0))
     .map(n=> prio[n] ? `★${escapeHtml(n)}` : escapeHtml(n)).join("・");
   let infoHtml = `<div class="cal-day-info">
-    ${duty ? `<b>${escapeHtml(label)}</b><br>` : `通常日(当番は不要です)<br>`}
-    当番: ${wanterNames.length ? wanterNamesHtml : "なし"}
-    ${calendarChanged[ds] ? `<br>🔁 変更前の担当: ${prevAssigned.length ? escapeHtml(prevAssigned.join("・")) : "なし"}` : ``}
-  </div>`;
+  ${duty ? `<b>${escapeHtml(label)}</b><br>` : `通常日(当番は不要です)<br>`}
+  当番: ${assigned.length ? escapeHtml(assigned.join("・")) : "なし"}
+  ${calendarChanged[ds] ? `<br>🔁 変更前の担当: ${prevAssigned.length ? escapeHtml(prevAssigned.join("・")) : "なし"}` : ``}
+</div>`;
 
   if(isAdmin){
     bodyEl.innerHTML = infoHtml + `<div class="empty-note">読み込み中…</div>`;
