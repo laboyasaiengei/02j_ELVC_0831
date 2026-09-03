@@ -723,17 +723,24 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 /* #modeSwitch is intentionally untouched. */
 .date-status-stack{
   display:flex;
-  flex-direction:column;
-  align-items:flex-end;
-  gap:3px;
+  flex-direction:row;
+  align-items:center;
+  justify-content:flex-end;
+  gap:6px;
   align-self:flex-start;
   margin-top:-3px;
 }
+
 .date-theme-row{
   display:flex;
   align-items:center;
   justify-content:flex-end;
   gap:8px;
+  order:2;
+}
+
+#connBanner.compact-status{
+  order:1;
 }
 #connBanner.compact-status{
   display:flex !important;
