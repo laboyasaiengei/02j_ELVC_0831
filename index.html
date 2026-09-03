@@ -2780,6 +2780,2791 @@ async function saveRoster(){
 }
 function openRosterModal(){
   renderRosterList();
+  document.getElementById("r<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<script>
+/* 起動時は常にlight固定。splash(manifestのbackground_color)と初期描画色を
+   一致させることで起動時の色チラつきを防ぐ。ダークにしたい場合は起動後に
+   手動トグルで都度切り替える方式とし、OS判定・保存は行わない。 */
+(function(){
+  document.documentElement.dataset.theme = 'light';
+})();
+</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>栽培・当番管理システム ATLAS</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="shortcut icon" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
+<link rel="manifest" href="icons/manifest.webmanifest">
+<link rel="apple-touch-startup-image" href="icons/splash-light.png">
+<meta name="theme-color" content="#26402f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="栽培・当番管理システム ATLAS">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;600;700&display=swap">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+<style>
+  :root{
+    color-scheme: light;
+    --soil-900:#26402f;
+    --soil-800:#2f4d38;
+    --leaf-600:#4c7a52;
+    --leaf-500:#6b8f71;
+    --leaf-100:#dfe9de;
+    --sand-100:#f2efe4;
+    --card:#fbfaf5;
+    --bark:#8c6a4e;
+    --ink:#233227;
+    --ink-soft:#5c6b5f;
+    --line:#e1ddcd;
+    --done:#4c7a52;
+    --alert:#c1613f;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+
+  /* ダークモード切り替え演出用の"カーテン"。
+     全要素を個別にアニメーションさせる代わりに、この1枚だけをフェードさせて
+     色の切り替わりを覆い隠す（iPhoneでのコマ落ち対策）。 */
+  .theme-curtain{
+    position:fixed; inset:0; z-index:99999;
+    background:#f2efe4;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .25s ease;
+  }
+  html,body{margin:0;padding:0;}
+  html{ height:100%; background:var(--sand-100); }
+  body{
+    background:var(--sand-100);
+    color:var(--ink);
+    font-family:"Noto Sans JP",sans-serif;
+    padding-bottom:calc(24px + env(safe-area-inset-bottom));
+    overscroll-behavior-y:contain;
+    touch-action:manipulation;
+  }
+  h1,h2,h3,.brand{font-family:"Zen Maru Gothic",sans-serif;}
+
+  header.top{
+    position:sticky; top:0; z-index:30;
+    background:var(--soil-900);
+    color:#fff;
+    padding:calc(9px + env(safe-area-inset-top)) 14px 6px 14px;
+    box-shadow:0 2px 10px rgba(38,64,47,.25);
+  }
+    .brand-row{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:10px;
+  }
+  .brand{font-weight:900; font-size:15.5px; letter-spacing:.02em; min-width:0;}
+  .brand-title-row{display:flex; align-items:center; min-width:0;}
+  .atlas-brand-logo{
+    display:block;
+    width:clamp(120px,30vw,178px);
+    height:auto;
+    max-height:31px;
+    object-fit:contain;
+    object-position:left center;
+  }
+  .brand-controls{
+    margin-left:auto;
+    display:flex;
+    align-items:center;
+    gap:7px;
+    flex:0 0 auto;
+    min-height:31px;
+  }
+  @media (max-width:390px){
+    .atlas-brand-logo{width:clamp(108px,31vw,142px);max-height:27px;}
+    .brand-controls{gap:5px;min-height:27px;}
+    .date-pill{padding:3px 6px;font-size:9.5px;}
+  }
+  .brand-sub{
+  font-family:sans-serif;
+  font-weight:400;
+  font-size:9.5px;
+  letter-spacing:.02em;
+  opacity:.78;
+  line-height:1.1;
+  margin:0;
+  white-space:nowrap;
+}
+  .brand-sub-group{display:flex;flex-direction:column;gap:0;margin-top:1px;margin-bottom:3px;}
+  .date-pill{
+    font-size:10.5px; color:#e7f0e6; background:rgba(255,255,255,.08);
+    padding:3px 8px; border-radius:999px; white-space:nowrap;
+  }
+
+  nav.tabs{
+    display:flex; gap:4px; margin-top:8px;
+  }
+  nav.tabs button{
+    flex:1; appearance:none; border:none; background:transparent;
+    color:#c9d9c9; font-family:"Zen Maru Gothic",sans-serif; font-weight:700;
+    font-size:13px; padding:6px 4px 7px; cursor:pointer;
+    border-bottom:3px solid transparent;
+    transition:color .15s ease, border-color .15s ease;
+  }
+  nav.tabs button.active{
+    color:#fff; border-bottom-color:#a6d6ab;
+  }
+
+  /* ---- 過去7日間の日付選択チップ ---- */
+  .date-select{
+    display:flex; gap:5px; overflow-x:auto; margin-top:7px; padding-bottom:1px;
+    -webkit-overflow-scrolling:touch; scrollbar-width:none;
+  }
+  .date-select::-webkit-scrollbar{ display:none; }
+  .date-chip{
+    flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:0;
+    border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.06);
+    border-radius:10px; padding:5px 9px; color:#dfe9de; font-size:10px;
+    cursor:pointer; min-width:42px; font-family:"Noto Sans JP",sans-serif;
+  }
+  .date-chip .dow{font-weight:700; font-size:11px; font-family:"Zen Maru Gothic",sans-serif;}
+  .date-chip .badge{font-size:9px; color:#cfe0d2; margin-top:0;}
+  .date-chip .today-tag{font-size:8.5px; background:#a6d6ab; color:#1c3320; border-radius:5px; padding:0 4px; margin-top:1px; font-weight:700;}
+  .date-chip.active{ background:#fff; color:var(--soil-800); border-color:#fff; }
+  .date-chip.active .badge{ color:var(--leaf-600); }
+  .date-chip.has-data:not(.active){ border-color:rgba(166,214,171,.55); }
+
+  .sprout-wrap{
+  display:block;
+  background:rgba(255,255,255,.06);
+  margin:6px 0 0;
+  padding:5px 10px 6px;
+  border-radius:10px;
+}
+  .progress-text{min-width:0;}
+  .progress-text .big{font-family:"Zen Maru Gothic",sans-serif; font-weight:900; font-size:13px; color:#fff; white-space:nowrap;}
+  .progress-text .small{display:block; font-size:11px; color:#dfe9de; margin-top:4px; font-weight:600; min-height:14px; line-height:1.4;}
+  .bar-track{height:4px; border-radius:99px; background:rgba(255,255,255,.15); margin-top:3px; overflow:hidden;}
+  .bar-fill{height:100%; background:linear-gradient(90deg,#8fc79a,#c9e7a8); border-radius:99px; transition:width .3s ease;}
+
+  /* ---- top action bar (画面上部・ヘッダー内に固定表示) ---- */
+    .top-actions{
+    display:flex; flex-wrap:nowrap; gap:4px;
+    margin:8px 0 8px;
+  }
+    .foot-btn{
+    border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.07); color:#e7f0e6;
+    border-radius:999px; padding:6px 4px; font-size:10.5px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; gap:3px; min-height:30px;
+    font-family:"Noto Sans JP",sans-serif;
+    flex:1 1 0; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .foot-btn:active{ background:rgba(255,255,255,.16); }
+  .foot-btn:disabled{opacity:.35;}
+  .foot-btn.danger{color:#ffd3bf; border-color:rgba(193,97,63,.5); background:rgba(193,97,63,.15);}
+
+  /* ---- 接続状態バナー ---- */
+  .conn-banner{
+    display:none; align-items:center; gap:8px;
+    font-size:11.5px; color:#ffe6d6; background:rgba(193,97,63,.22);
+    border:1px solid rgba(193,97,63,.4); border-radius:10px;
+    padding:7px 10px; margin-top:10px;
+  }
+  .conn-banner.show{display:flex;}
+  .conn-dot{width:7px; height:7px; border-radius:50%; background:var(--alert); flex:0 0 auto;}
+
+  main{padding:12px 16px 16px; max-width:640px; margin:0 auto;}
+
+  /* ---- 過去記録閲覧中バナー ---- */
+  .history-banner{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:#eef4ec; border:1px solid #cfe4c9; color:var(--leaf-600);
+    border-radius:12px; padding:11px 13px; margin-bottom:12px; font-size:12.5px; font-weight:600;
+  }
+  .history-banner button{
+    border:none; background:var(--leaf-600); color:#fff; border-radius:999px;
+    padding:8px 13px; font-size:12px; cursor:pointer; flex:0 0 auto; font-weight:600;
+  }
+    .duty-of-day-banner{
+    background:var(--leaf-100); color:var(--soil-800);
+    border-radius:12px; padding:10px 13px; margin-bottom:12px;
+    font-size:12.5px; font-weight:600;
+  }
+  .duty-of-day-banner b{ font-family:"Zen Maru Gothic",sans-serif; }
+
+  .section-card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+    margin-bottom:9px;
+    overflow:hidden;
+  }
+    .section-card.readonly{opacity:.92;}
+  .section-head{
+    display:flex; flex-direction:column; gap:4px;
+    padding:11px 14px; cursor:pointer;
+    user-select:none;
+  }
+  .section-top-row{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .section-title{font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:15.5px; color:var(--soil-800); display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0;}
+  .section-title-actions{display:flex; align-items:center; gap:8px; flex:0 0 auto;}
+  .section-sub-row{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .section-assignee{font-size:11.5px; color:var(--bark); font-weight:500;}
+  .section-edit-actions{display:flex; align-items:center; gap:6px; flex:0 0 auto; margin-left:auto;}
+  .section-alert{
+    display:inline-flex; align-items:center; gap:4px;
+    font-family:"Inter","Noto Sans JP",sans-serif;
+    font-size:11px; line-height:1.4; font-weight:600;
+    color:#7a4b12; background:#fff3e0; border:1px solid #f0c98a;
+    border-radius:999px; padding:2px 8px;
+    white-space:pre-wrap; word-break:break-word;
+  }
+  .section-card.has-alert{border-color:var(--alert);}
+  .section-count{font-size:12px; color:var(--ink-soft); font-weight:600; white-space:nowrap;}
+  .icon-btn{width:34px; height:34px; border:none; background:none; display:flex; align-items:center; justify-content:center; color:#b9ab98; cursor:pointer; border-radius:8px; flex:0 0 auto;}
+  .icon-btn:active{background:#f1ece0;}
+  .icon-btn svg{width:16px; height:16px;}
+  .move-stack{display:flex; flex-direction:column; width:24px; flex:0 0 auto; border-radius:8px; overflow:hidden;}
+  .move-stack button{width:24px; height:17px; border:none; background:none; color:#b9ab98; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0;}
+  .move-stack button svg{width:12px; height:12px;}
+  .move-stack button:active{background:#f1ece0;}
+  .move-stack button:disabled{opacity:.3;}
+  .chev{width:18px; height:18px; transition:transform .2s ease, color .35s ease; color:var(--leaf-500); flex:0 0 auto;}
+  .section-card.open .chev{transform:rotate(90deg);}
+  .section-card.all-done{background:#f2f8f0; border-color:#cfe4c9;}
+  .section-card.all-done .section-title{color:var(--leaf-600);}
+  .section-card.no-tasks{ opacity:.55; border-style:dashed; }
+  .section-card.no-tasks .section-title{ color:var(--ink-soft); }
+  .section-card.no-tasks .chev{ color:#c9c2b5; }
+  .section-count.is-empty{
+    background:var(--line); color:var(--ink-soft);
+    border-radius:999px; padding:2px 8px; font-weight:700;
+  }
+
+  .task-list{max-height:0; overflow:hidden; transition:max-height .25s ease;}
+  .section-card.open .task-list{max-height:2400px;}
+  .task-row{
+    display:flex; align-items:flex-start; gap:11px;
+    padding:11px 14px 11px 16px; border-top:1px solid var(--line);
+  }
+  .check{
+    flex:0 0 auto; width:26px; height:26px; margin-top:1px;
+    border-radius:8px; border:2px solid #b9c9b6; background:#fff;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    transition:background .12s ease, border-color .12s ease, transform .08s ease;
+  }
+  .check.checked{ background:var(--done); border-color:var(--done); }
+  .check.checked svg{display:block;}
+  .check svg{display:none; width:15px; height:15px; color:#fff;}
+  .check:active{transform:scale(.9);}
+  .check.readonly{cursor:default;}
+  .check.readonly:active{transform:none;}
+  .check.day-inactive{ cursor:not-allowed; opacity:.35; }
+  .check.day-inactive:active{transform:none;}
+  .task-row.day-inactive .task-text{ color:#9aa79a; }
+  .task-row.day-inactive .task-assignee{ color:#c9c2b5; }
+
+  .task-text{font-size:14.5px; line-height:1.55; padding-top:2px; word-break:break-word;}
+  .task-main{flex:1; min-width:0;}
+  .task-assignee{font-size:11px; color:var(--bark); margin-top:3px; font-weight:600;}
+  .task-text.checked ~ .task-assignee, .task-main .task-text.checked + .task-assignee{color:#b9c2b5;}
+  .task-text.checked{color:#9aa79a; text-decoration:line-through;}
+  .task-text a.task-link{color:var(--leaf-600); text-decoration:underline; word-break:break-all;}
+  .task-text.checked a.task-link{color:#9aa79a;}
+  .task-remove{flex:0 0 auto; border:none; background:none; color:#c9bfae; font-size:20px; cursor:pointer; padding:2px 6px; min-width:32px; min-height:32px;}
+
+  .add-row{
+    display:flex; gap:8px; padding:10px 14px 14px; border-top:1px solid var(--line);
+  }
+  .add-row input{
+    flex:1; border:1px solid var(--line); border-radius:10px; padding:10px 10px;
+    font-family:"Noto Sans JP",sans-serif; font-size:16px; background:#fff; min-width:0;
+  }
+  .add-row button{
+    border:none; background:var(--leaf-600); color:#fff; border-radius:10px;
+    padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer; flex:0 0 auto;
+  }
+  .add-row-sync{
+    display:flex; gap:14px; padding:0 14px 12px; margin-top:-6px;
+  }
+  .sync-check{
+    display:flex; align-items:center; gap:5px; font-size:12px; color:var(--ink-soft); cursor:pointer;
+  }
+  .sync-check input{ width:15px; height:15px; margin:0; accent-color:var(--leaf-600); }
+  .sync-modal-list{ display:flex; flex-direction:column; gap:10px; margin:4px 0 16px; }
+  .sync-modal-list .sync-check{ font-size:13.5px; color:var(--ink); }
+  .sync-modal-list .sync-check input{ width:18px; height:18px; }
+  .sync-modal-actions{ display:flex; gap:8px; }
+  .sync-modal-actions button{
+    border:none; border-radius:10px; padding:11px 14px; font-size:13.5px; font-weight:600; cursor:pointer;
+  }
+  .sync-modal-actions .primary{ background:var(--leaf-600); color:#fff; flex:1; }
+  .sync-modal-actions .cancel{ background:#efece2; color:var(--ink-soft); }
+
+  /* ---- 苗テラス 記録シート（管理簿 / 培養液記録） ---- */
+  .record-entry-row{ padding:9px 14px 14px; border-top:1px solid var(--line); }
+  .record-entry-btn{
+    width:100%; border:none; background:var(--leaf-100); color:var(--leaf-600);
+    border-radius:12px; padding:11px; font-size:13px; font-weight:700; cursor:pointer;
+    font-family:"Zen Maru Gothic",sans-serif; display:flex; align-items:center; justify-content:center; gap:6px;
+  }
+  .record-entry-btn:active{ background:#cfe4c9; }
+  .log-date-banner{
+    background:var(--leaf-100); color:var(--leaf-600); border-radius:10px; padding:9px 12px;
+    font-size:13px; font-weight:700; margin-bottom:12px; text-align:center;
+    font-family:"Zen Maru Gothic",sans-serif;
+  }
+  .log-disabled-note{
+    background:#f3ede0; color:var(--bark); border-radius:10px; padding:11px 12px; font-size:12.5px; margin-bottom:16px; line-height:1.5;
+  }
+  .log-form{ display:flex; flex-direction:column; gap:10px; margin-bottom:18px; }
+  .log-field{ display:flex; flex-direction:column; gap:4px; }
+  .log-field label{ font-size:11.5px; color:var(--ink-soft); font-weight:600; }
+  .log-field input{
+    border:1px solid var(--line); border-radius:10px; padding:10px 11px;
+    font-size:16px; font-family:"Noto Sans JP",sans-serif; background:#fff; min-width:0;
+  }
+  .log-field-pair{ display:flex; gap:8px; }
+  .log-field-pair .log-field{ flex:1; min-width:0; }
+  .log-save-btn{
+    width:100%; border:none; background:var(--leaf-600); color:#fff; border-radius:12px;
+    padding:12px; font-size:14px; font-weight:700; cursor:pointer; margin-top:2px;
+    font-family:"Zen Maru Gothic",sans-serif;
+  }
+  .log-section-title{ font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:13.5px; color:var(--soil-800); margin:4px 0 8px; }
+  .log-history-row{
+    display:flex; align-items:flex-start; gap:8px; padding:9px 2px; border-bottom:1px solid var(--line); font-size:12px;
+  }
+  .log-history-row .lh-date{ font-weight:700; color:var(--soil-800); width:54px; flex:0 0 auto; padding-top:1px; }
+  .log-history-row .lh-body{ flex:1; color:var(--ink-soft); min-width:0; line-height:1.6; }
+  .log-history-row .lh-recorder{ display:block; color:var(--ink); font-weight:700; margin-bottom:1px; }
+
+  .add-section-card{
+    border:2px dashed #cdbfa0; border-radius:16px; padding:14px; margin-bottom:12px;
+    background:transparent;
+  }
+  .add-section-toggle{
+    width:100%; border:none; background:none; color:var(--bark); font-weight:700;
+    font-family:"Zen Maru Gothic",sans-serif; font-size:14.5px; cursor:pointer; padding:6px;
+  }
+  .add-section-form{display:none; flex-direction:column; gap:8px; margin-top:10px;}
+  .add-section-form.show{display:flex;}
+  .add-section-form input{border:1px solid var(--line); border-radius:10px; padding:10px 11px; font-size:16px; font-family:"Noto Sans JP",sans-serif;}
+  .add-section-form .btn-row{display:flex; gap:8px;}
+  .add-section-form button{border:none; border-radius:10px; padding:10px 14px; font-size:13px; font-weight:600; cursor:pointer;}
+  .add-section-form .primary{background:var(--leaf-600); color:#fff; flex:1;}
+  .add-section-form .cancel{background:#efece2; color:var(--ink-soft);}
+
+  .toast{
+  position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom)); transform:translateX(-50%) translateY(20px);
+  background:var(--soil-900); color:#fff; padding:10px 18px; border-radius:999px;
+  font-size:13px; opacity:0; transition:opacity .2s ease, transform .2s ease;
+  pointer-events:none; z-index:9998; max-width:85vw; text-align:center;
+}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  .app-loading-overlay{
+    position:fixed; inset:0; z-index:9999;
+    background:var(--sand-100);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    transition:opacity .25s ease;
+  }
+  .app-loading-overlay.hide{ opacity:0; pointer-events:none; }
+  .app-loading-spinner{
+    width:38px; height:38px; border-radius:50%;
+    border:4px solid var(--leaf-100); border-top-color:var(--leaf-600);
+    animation:app-loading-spin .8s linear infinite;
+  }
+  @keyframes app-loading-spin{ to{ transform:rotate(360deg); } }
+  .app-loading-text{ font-family:"Zen Maru Gothic",sans-serif; font-size:13px; color:var(--ink-soft); }
+  /* 今どの段階の読み込みをしているかを示す小さな補足テキスト（例：Firebaseに接続中…） */
+  .app-loading-step{ font-size:11px; color:var(--ink-soft); opacity:.75; margin-top:-6px; min-height:14px; }
+
+  /* 読み込みが既定時間を超えて止まった場合に、スピナーの代わりに表示するエラー画面 */
+  .app-loading-error{
+    display:flex; flex-direction:column; align-items:center; gap:10px;
+    max-width:300px; text-align:center; padding:0 22px;
+  }
+  .app-loading-error-title{ font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:14.5px; color:var(--ink); }
+  .app-loading-error-detail{ font-size:12px; color:var(--ink-soft); line-height:1.7; white-space:pre-wrap; }
+  .app-loading-retry-btn{
+    margin-top:6px; border:none; background:var(--soil-900); color:#fff;
+    border-radius:999px; padding:11px 26px; font-size:13.5px; font-weight:700; cursor:pointer;
+    font-family:"Noto Sans JP",sans-serif;
+  }
+
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(35,50,39,.45); z-index:70;
+    display:none; align-items:flex-end; justify-content:center;
+  }
+  .modal-overlay.show{display:flex;}
+  .modal-sheet{
+    background:#fff; width:100%; max-width:640px; border-radius:18px 18px 0 0;
+    padding:18px 16px calc(22px + env(safe-area-inset-bottom)); max-height:75vh; overflow-y:auto;
+  }
+  .modal-title{font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:16px; color:var(--soil-800); margin-bottom:4px;}
+  .modal-sub{font-size:12px; color:var(--ink-soft); margin-bottom:14px;}
+  .backup-item{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:11px 4px; border-bottom:1px solid var(--line);
+  }
+  .backup-item .info{font-size:13px; color:var(--ink);}
+  .backup-item .info small{display:block; color:var(--ink-soft); font-size:11px; margin-top:2px;}
+  .backup-item button{border:none; background:var(--leaf-100); color:var(--leaf-600); border-radius:9px; padding:8px 13px; font-size:12.5px; font-weight:600; cursor:pointer; flex:0 0 auto; min-height:36px;}
+  .backup-pager{ display:flex; align-items:center; justify-content:center; gap:14px; padding:12px 4px 2px; }
+  .backup-pager button{
+    border:none; background:var(--leaf-100); color:var(--leaf-600); border-radius:9px;
+    padding:8px 14px; font-size:12.5px; font-weight:600; cursor:pointer; min-height:34px;
+  }
+  .backup-pager button:disabled{ background:#efece2; color:var(--ink-soft); opacity:.6; cursor:default; }
+  .backup-pager .backup-pager-label{ font-size:12px; color:var(--ink-soft); white-space:nowrap; }
+  .modal-close{
+    display:block; width:100%; margin-top:14px; border:none; background:#efece2; color:var(--ink-soft);
+    border-radius:12px; padding:12px; font-size:13.5px; cursor:pointer; font-weight:600;
+  }
+  .empty-note{text-align:center; color:var(--ink-soft); font-size:12.5px; padding:14px 10px 4px;}
+
+  /* ---- 復元用パスコード入力 ---- */
+  .passcode-dots{ display:flex; justify-content:center; gap:14px; margin:6px 0 20px; }
+  .passcode-dots .dot{ width:16px; height:16px; border-radius:50%; border:2px solid var(--leaf-500); background:#fff; transition:background .12s; box-sizing:border-box; }
+  .passcode-dots .dot.filled{ background:var(--leaf-600); border-color:var(--leaf-600); }
+  .passcode-dots.shake{ animation:passcode-shake .35s; }
+  @keyframes passcode-shake{
+    10%,90%{ transform:translateX(-2px); }
+    20%,80%{ transform:translateX(4px); }
+    30%,50%,70%{ transform:translateX(-8px); }
+    40%,60%{ transform:translateX(8px); }
+  }
+  .passcode-error{ text-align:center; color:var(--alert); font-size:12.5px; min-height:16px; margin-bottom:6px; }
+  .passcode-keypad{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; max-width:280px; margin:0 auto; }
+  .passcode-keypad button{
+    border:none; background:var(--sand-100); color:var(--soil-800); font-size:20px; font-weight:700;
+    border-radius:14px; padding:16px 0; cursor:pointer; font-family:"Zen Maru Gothic",sans-serif;
+  }
+  .passcode-keypad button:active{ background:var(--leaf-100); }
+  .passcode-keypad button.passcode-empty{ background:transparent; cursor:default; }
+
+  .config-banner{
+    background:#fff3e0; border:1px solid #f0c98a; color:#7a4b12; border-radius:12px;
+    padding:12px 14px; margin:0 0 12px; font-size:12.5px; line-height:1.6;
+  }
+  .config-banner code{background:#fff; border:1px solid #f0c98a; border-radius:6px; padding:1px 5px; font-size:11.5px;}
+
+  /* ---- モード切り替え / 当番管理 ---- */
+  .mode-switch{ display:flex; gap:6px; margin-bottom:2px; }
+  .mode-switch button{
+    flex:1; border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.05);
+    color:#cfe0d2; font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:12.5px;
+    padding:7px 6px; border-radius:10px; cursor:pointer;
+  }
+  .mode-switch button.active{ background:#fff; color:var(--soil-800); }
+
+  .duty-section-title{ font-family:"Zen Maru Gothic",sans-serif; font-weight:700; color:var(--soil-800); font-size:15px; margin:2px 0 10px; display:flex; flex-direction:row; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px 10px;}
+  .duty-actions{ display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; margin-left:auto; min-width:0; }
+    /* duty-actions-row: 右揃えの"外枠"。中の.scroll-rowが実際に横スクロールする"中身"で、
+       役割を分けることで「入りきる時は右揃え」「入りきらない時は左端からスクロール」を両立させる */
+    .duty-actions-row{ display:flex; justify-content:flex-end; width:100%; margin:0 0 10px; min-width:0; }
+    .duty-actions-row .scroll-row{
+      display:flex; flex-wrap:nowrap; gap:6px; overflow-x:auto; max-width:100%;
+      -webkit-overflow-scrolling:touch; scrollbar-width:none; padding-bottom:2px;
+    }
+    .duty-actions-row .scroll-row::-webkit-scrollbar{ display:none; }
+    .duty-actions-row .scroll-row .lock-btn{ flex:0 0 auto; }
+  .duty-section-title .lock-btn{ font-size:11.5px; font-weight:600; color:var(--bark); background:var(--leaf-100); border:none; border-radius:999px; padding:5px 11px; cursor:pointer; white-space:nowrap; }
+  .duty-section-title > .title-text{ flex:0 0 auto; white-space:nowrap; }
+
+  .me-bar{ display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:9px 12px; margin-bottom:12px; font-size:12.5px; color:var(--ink-soft); }
+  .me-bar b{ color:var(--soil-800); font-family:"Zen Maru Gothic",sans-serif; }
+  .me-bar button{ margin-left:auto; border:none; background:var(--leaf-100); color:var(--leaf-600); border-radius:999px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; }
+
+  .name-chip{
+    display:inline-flex; align-items:center; border:1px solid var(--line); background:#fff; border-radius:999px;
+    padding:9px 14px; font-size:14px; margin:0 6px 8px 0; cursor:pointer; font-family:"Zen Maru Gothic",sans-serif; font-weight:700; color:var(--soil-800);
+  }
+  .name-chip:active{ background:var(--leaf-100); }
+
+  .pref-month-block{ margin-bottom:18px; }
+  .pref-month-head{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin:2px 0 9px; }
+  .pref-month-head .name{ font-family:"Zen Maru Gothic",sans-serif; font-weight:800; font-size:15px; color:var(--soil-800); display:flex; align-items:center; gap:7px; }
+  .pref-month-tag{ font-size:10.5px; font-weight:700; border-radius:999px; padding:3px 9px; white-space:nowrap; }
+  .pref-month-tag.next{ background:var(--leaf-600); color:#fff; }
+  .pref-month-tag.this{ background:var(--leaf-100); color:var(--ink-soft); }
+  .pref-status-row{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:-2px 0 8px; }
+  .pref-status-badge{ font-size:10.5px; font-weight:700; border-radius:999px; padding:3px 9px; white-space:nowrap; }
+  .pref-status-badge.open{ background:#dff0dc; color:var(--leaf-600); }
+  .pref-status-badge.closed{ background:#efece2; color:var(--ink-soft); }
+  .pref-deadline-big{ font-family:"Zen Maru Gothic",sans-serif; font-size:15px; font-weight:800; color:var(--alert); white-space:nowrap; }
+  .pref-deadline-big.passed{ color:var(--ink-soft); }
+  .pref-month-sub{ font-size:11px; color:var(--ink-soft); margin-top:1px; }
+  .pref-row{ display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:11px 13px; margin-bottom:9px; }
+  .pref-row.is-past{ background:#f2f0e6; border-color:#e6e1d0; opacity:.68; }
+  .pref-row.is-past .pref-day, .pref-row.is-past .pref-label{ color:var(--ink-soft); }
+  .pref-row.is-today{ border-color:var(--leaf-500); background:#f1f8ef; box-shadow:0 0 0 1px var(--leaf-500) inset; }
+  .pref-date{ flex:0 0 auto; width:64px; text-align:center; }
+  .pref-day{ font-family:"Zen Maru Gothic",sans-serif; font-weight:800; font-size:14px; color:var(--soil-800); }
+  .pref-today-dot{ display:inline-block; font-size:9px; font-weight:700; color:var(--leaf-600); background:#dff0dc; border-radius:999px; padding:1px 6px; margin-top:2px; }
+  .pref-label{ font-size:10.5px; color:var(--bark); margin-top:2px; }
+  .pref-wanters{ flex:1; min-width:0; font-size:12px; color:var(--ink-soft); line-height:1.5; }
+  .pref-toggle{ flex:0 0 auto; border:1px solid var(--leaf-500); background:#fff; color:var(--leaf-600); border-radius:999px; padding:8px 12px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap; }
+  .pref-toggle.mine{ background:var(--leaf-600); color:#fff; }
+  .pref-priority{ flex:0 0 auto; border:1px solid var(--bark); background:#fff; color:var(--bark); border-radius:999px; padding:8px 10px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap; }
+  .pref-priority.on{ background:var(--bark); color:#fff; }
+  .pref-readonly-mark{ flex:0 0 auto; font-size:11px; color:var(--ink-soft); white-space:nowrap; }
+  .data-count-table{
+    width:100%;
+    border-collapse:collapse;
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+    overflow:hidden;
+  }
+  .data-count-table th,
+  .data-count-table td{
+    padding:10px 12px;
+    font-size:13px;
+    text-align:left;
+    border-bottom:1px solid var(--line);
+  }
+  .data-count-table th{
+    background:#eef0e5;
+    color:var(--ink-soft);
+    font-weight:700;
+    font-size:11.5px;
+  }
+  .data-count-table tr:last-child td{border-bottom:none;}
+
+  .cal-month-title{ font-family:"Zen Maru Gothic",sans-serif; font-weight:800; color:var(--soil-800); font-size:15px; margin:14px 0 8px; }
+  .cal-grid{ display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px; width:100%; max-width:420px; margin:0 auto; box-sizing:border-box; }
+  .cal-dow{ text-align:center; font-size:10.5px; color:var(--ink-soft); font-weight:700; padding-bottom:2px; }
+  .cal-cell{
+    /* 人数や祝日名に応じて縦方向へ自然に伸びる。
+       同じ週のセルはCSS Gridにより最も高いセルへ揃う。 */
+    border-radius:10px; border:1px solid var(--line); background:var(--card);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; padding:5px 2px;
+    cursor:pointer; overflow:visible; min-height:52px; height:auto;
+  }
+
+  @media (max-width:390px){
+    .cal-grid{ gap:3px; }
+    .cal-cell{ min-width:0; min-height:52px; height:auto; padding:4px 1px; border-radius:9px; }
+    .cal-dow{ min-width:0; font-size:10px; }
+    .cal-cell .cal-label{ font-size:7.5px; white-space:normal; overflow-wrap:anywhere; }
+    .cal-cell .cal-people{ font-size:8px; }
+  }
+
+  .cal-cell.empty{ background:transparent; border:none; cursor:default; }
+  .cal-cell.duty{ background:#fdf3e6; border-color:#eccf9d; }
+  .cal-cell.past{ opacity:.55; }
+  .cal-cell.today{ border:2px solid var(--leaf-600); box-shadow:0 0 0 1px var(--leaf-600) inset; background:var(--leaf-100); }
+  .cal-cell.today .cal-num{ color:var(--leaf-600); }
+  .cal-num-row{ display:flex; align-items:center; justify-content:center; gap:2px; min-height:16px; }
+  .cal-cell .cal-num{ font-family:"Zen Maru Gothic",sans-serif; font-weight:800; font-size:12.5px; color:var(--soil-800); }
+  .cal-change-mark{ font-size:9px; line-height:1; flex:0 0 auto; }
+  .cal-cell.duty .cal-num{ color:var(--alert); }
+  .cal-cell .cal-label{ font-size:8px; color:var(--bark); line-height:1.1; margin-top:1px; text-align:center; }
+  .cal-cell .cal-people{ font-size:8.5px; color:var(--leaf-600); font-weight:700; line-height:1.25; margin-top:2px; text-align:center; overflow-wrap:anywhere; }
+  .cal-cell .cal-person{ display:block; white-space:normal; overflow-wrap:anywhere; word-break:break-word; }
+  .special-date-row{ display:flex; align-items:center; gap:8px; padding:9px 2px; border-bottom:1px solid var(--line); font-size:12.5px; }
+  .special-date-row .sd-date{ font-weight:700; color:var(--soil-800); width:78px; flex:0 0 auto; }
+  .special-date-row .sd-label{ flex:1; color:var(--ink-soft); min-width:0; }
+  .special-date-row button{ border:none; background:none; color:#c9bfae; font-size:16px; cursor:pointer; }
+  .roster-check-row{ display:flex; align-items:center; gap:9px; padding:8px 2px; border-bottom:1px solid var(--line); font-size:13.5px; }
+  .roster-check-row input{ width:19px; height:19px; }
+  .roster-check-row label{ flex:1; min-width:0; }
+  .roster-count-badge{ flex:0 0 auto; font-size:11px; font-weight:700; color:var(--leaf-600); background:var(--leaf-100); border-radius:999px; padding:3px 9px; white-space:nowrap; }
+  .roster-count-circle{ margin-left:5px; font-size:13px; font-weight:700; color:var(--leaf-600); }
+  .cal-day-info{ font-size:12.5px; color:var(--ink-soft); margin-bottom:10px; line-height:1.6; }
+  .cal-day-info b{ color:var(--soil-800); }
+  @media print{
+  body.printing-calendar header.top,
+  body.printing-calendar .toast,
+  body.printing-calendar .modal-overlay{ display:none !important; }
+  body.printing-calendar #dutyMain > *:not(.cal-month-block){ display:none !important; }
+  body.printing-calendar .cal-month-block{ display:none !important; }
+  body.printing-calendar .cal-month-block.print-target{ display:block !important; }
+  body.printing-calendar .cal-month-block.print-target [data-print-month]{ display:none !important; }
+}
+  /* ================= ダークモード ================= */
+html[data-theme="dark"]{
+  color-scheme: dark;
+  --soil-900:#1b2e21;
+  --soil-800:#d9e6d4;
+  --leaf-600:#6fae78;
+  --leaf-500:#7fa885;
+  --leaf-100:#24392b;
+  --sand-100:#14181a;
+  --card:#1e2422;
+  --bark:#c2a488;
+  --ink:#e8ece7;
+  --ink-soft:#a3ada2;
+  --line:#333d34;
+  --done:#5f9a67;
+  --alert:#e08066;
+  --surface-2:#262e27;
+  --accent-soft:#1c2a20;
+  --warn-bg:#3a2f14;
+  --warn-border:#5c4a1e;
+  --warn-text:#e8c98a;
+}
+
+html[data-theme="dark"] .date-chip.active{ background:var(--surface-2); color:var(--ink); border-color:var(--surface-2); }
+html[data-theme="dark"] .mode-switch button.active{ background:var(--surface-2); color:var(--ink); }
+html[data-theme="dark"] .icon-btn{ color:#8d9a8f; }
+html[data-theme="dark"] .icon-btn:active{ background:var(--surface-2); }
+html[data-theme="dark"] .icon-btn{ color:#8d9a8f; }
+html[data-theme="dark"] .icon-btn:active{ background:var(--surface-2); }
+html[data-theme="dark"] .move-stack button{ color:#8d9a8f; }
+html[data-theme="dark"] .move-stack button:active{ background:var(--surface-2); }
+html[data-theme="dark"] .section-card.all-done{ background:var(--accent-soft); border-color:#2f4a36; }
+html[data-theme="dark"] .section-card.no-tasks{ border-color:#3c4a3e; }
+html[data-theme="dark"] .section-card.no-tasks .chev{ color:#5c655e; }
+html[data-theme="dark"] .section-count.is-empty{ background:var(--surface-2); color:#8d9a8f; }
+html[data-theme="dark"] .check{ border-color:#3c4a3e; background:var(--surface-2); }
+html[data-theme="dark"] .check svg{ color:#0f1512; }
+html[data-theme="dark"] .task-text.checked ~ .task-assignee,
+html[data-theme="dark"] .task-main .task-text.checked + .task-assignee{ color:#6b756c; }
+html[data-theme="dark"] .task-text.checked{ color:#6b756c; }
+html[data-theme="dark"] .task-text.checked a.task-link{ color:#6b756c; }
+html[data-theme="dark"] .task-remove{ color:#7c8579; }
+html[data-theme="dark"] .add-row input{ background:var(--surface-2); border-color:var(--line); color:var(--ink); }
+html[data-theme="dark"] .add-section-card{ border-color:#4a5a4c; }
+html[data-theme="dark"] .add-section-form input{ background:var(--surface-2); border-color:var(--line); color:var(--ink); }
+html[data-theme="dark"] .add-section-form .cancel{ background:var(--surface-2); color:var(--ink-soft); }
+html[data-theme="dark"] .sync-modal-actions .cancel{ background:var(--surface-2); color:var(--ink-soft); }
+html[data-theme="dark"] .modal-sheet{ background:#1c211d; }
+html[data-theme="dark"] .backup-pager button:disabled{ background:var(--surface-2); }
+html[data-theme="dark"] .modal-close{ background:var(--surface-2); }
+html[data-theme="dark"] .passcode-dots .dot{ background:var(--surface-2); }
+html[data-theme="dark"] .passcode-dots .dot.filled{ background:var(--leaf-600); border-color:var(--leaf-600); }
+html[data-theme="dark"] .passcode-keypad button{ background:var(--surface-2); color:var(--ink); }
+html[data-theme="dark"] .passcode-keypad button:active{ background:#2f382f; }
+html[data-theme="dark"] .config-banner{ background:var(--warn-bg); border-color:var(--warn-border); color:var(--warn-text); }
+html[data-theme="dark"] .config-banner code{ background:var(--surface-2); border-color:var(--warn-border); color:var(--warn-text); }
+html[data-theme="dark"] .section-alert{ background:var(--warn-bg); border-color:var(--warn-border); color:var(--warn-text); }
+html[data-theme="dark"] .name-chip{ background:var(--surface-2); }
+html[data-theme="dark"] .pref-row.is-past{ background:#181d19; border-color:var(--surface-2); }
+html[data-theme="dark"] .pref-row.is-today{ background:var(--accent-soft); }
+html[data-theme="dark"] .pref-today-dot{ background:var(--accent-soft); }
+html[data-theme="dark"] .pref-toggle{ background:var(--surface-2); }
+html[data-theme="dark"] .pref-status-badge.open{ background:var(--accent-soft); }
+html[data-theme="dark"] .pref-status-badge.closed{ background:var(--surface-2); }
+html[data-theme="dark"] .pref-deadline-big.passed{ color:var(--ink-soft); }
+html[data-theme="dark"] .pref-priority{ background:var(--surface-2); }
+html[data-theme="dark"] .data-count-table th{ background:var(--surface-2); }
+html[data-theme="dark"] .cal-cell.duty{ background:var(--warn-bg); border-color:var(--warn-border); }
+html[data-theme="dark"] .special-date-row button{ color:#7c8579; }
+html[data-theme="dark"] .record-entry-btn{ background:var(--accent-soft); color:#a6d6ab; }
+html[data-theme="dark"] .log-field input{ background:var(--surface-2); border-color:var(--line); color:var(--ink); }
+html[data-theme="dark"] .log-date-banner{ background:var(--accent-soft); color:#a6d6ab; }
+html[data-theme="dark"] .log-disabled-note{ background:var(--warn-bg); color:var(--warn-text); }
+.diff-added{ background:#e3f7d8; border-left:4px solid #4caf50; padding:6px 8px; border-radius:6px; margin-bottom:6px; }
+.diff-changed{ background:#fff6cc; border-left:4px solid #e0b400; padding:6px 8px; border-radius:6px; margin-bottom:6px; }
+.diff-removed{ background:#fde3e0; border-left:4px solid #c1613f; padding:6px 8px; border-radius:6px; margin-bottom:6px; text-decoration:line-through; opacity:.85; }
+.diff-legend{ display:flex; gap:12px; flex-wrap:wrap; font-size:11px; color:var(--ink-soft); margin-bottom:10px; }
+.diff-legend span{ display:inline-flex; align-items:center; gap:4px; }
+.diff-dot{ width:9px; height:9px; border-radius:3px; display:inline-block; }
+html[data-theme="dark"] .diff-added{ background:#1f3a22; border-left-color:#5fae66; }
+html[data-theme="dark"] .diff-changed{ background:#3a3314; border-left-color:#e0b400; }
+html[data-theme="dark"] .diff-removed{ background:#3a221e; border-left-color:#e08066; }
+html[data-theme="dark"] .cal-cell{ border-color:#3a4a3e; }
+html[data-theme="dark"] .cal-cell.past{ opacity:1; background:#111413; border-color:#252b26; }
+html[data-theme="dark"] .cal-cell.past.duty{ background:#1c1712; border-color:#3a2f1c; }
+html[data-theme="dark"] .cal-cell.past .cal-num{ color:#5c655e; }
+html[data-theme="dark"] .cal-cell.past.duty .cal-num{ color:#8a7452; }
+html[data-theme="dark"] .cal-cell.past .cal-label,
+html[data-theme="dark"] .cal-cell.past .cal-people,
+html[data-theme="dark"] .cal-dow{ color:#c3cdc0; }
+
+/* 切り替えボタン */
+.theme-toggle{
+  border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.08); color:#fff;
+  border-radius:999px; width:26px; height:26px; flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center;
+  font-size:13px; line-height:1; cursor:pointer; padding:0; overflow:hidden;
+}
+.theme-toggle:active{ background:rgba(255,255,255,.18); }
+.theme-toggle::before{ content:"🌙"; }
+html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
+  
+  .progress-line{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;}
+  .progress-line .small{margin-top:0;white-space:nowrap;}
+  .progress-complete-msg{
+  color:#c9e7a8;
+  font-weight:700;
+  white-space:nowrap;
+}
+</style>
+  <!-- ATLAS stable v8: iOS 18.7.10 preference long-wait guard (single read / 30s) -->
+</head>
+<body>
+
+<div id="themeCurtain" class="theme-curtain"></div>
+
+<div class="app-loading-overlay" id="appLoadingOverlay">
+  <div class="app-loading-spinner" id="appLoadingSpinner"></div>
+  <div class="app-loading-text" id="appLoadingText">読み込み中…</div>
+  <div class="app-loading-step" id="appLoadingStep"></div>
+  <div class="app-loading-error" id="appLoadingErrorBox" style="display:none;">
+    <div class="app-loading-error-title">読み込みに時間がかかっています</div>
+    <div class="app-loading-error-detail" id="appLoadingErrorDetail"></div>
+    <button type="button" class="app-loading-retry-btn" id="appLoadingRetryBtn">再読み込みする</button>
+  </div>
+</div>
+
+<header class="top">
+  <div class="brand-row">
+    <div class="brand">
+      <span class="brand-title-row">
+        <img class="atlas-brand-logo" src="icons/atlas-logo.png" alt="ATLAS">
+      </span>
+      <div class="brand-sub-group">
+        <div class="brand-sub">栽培・当番管理システム</div>
+      </div>
+    </div>
+    <div class="brand-controls">
+      <span class="date-pill" id="datePill">–</span>
+      <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="テーマ切り替え"></button>
+    </div>
+  </div>
+  <div class="mode-switch" id="modeSwitch">
+    <button data-mode="check" class="active">✅ 栽培管理</button>
+    <button data-mode="duty">📅 当番管理</button>
+  </div>
+
+  <div id="checkModeHeader">
+    <nav class="tabs" id="tabNav">
+      <button data-tab="asa" class="active">朝管理</button>
+      <button data-tab="hiru">昼管理</button>
+      <button data-tab="yugata">夕管理</button>
+    </nav>
+
+    <div class="sprout-wrap">
+<div class="progress-text">
+        <div class="progress-line">
+  <div class="big" id="progressBig">0 / 0</div>
+  <div class="small" id="progressSmall">完了</div>
+  <div class="small progress-complete-msg" id="progressCompleteMsg"></div>
+</div>
+        <div class="bar-track"><div class="bar-fill" id="barFill" style="width:0%"></div></div>
+      </div>
+    </div>
+
+        <div class="top-actions">
+      <button class="foot-btn" id="dateRefBtn">🔍 参照</button>
+      <button class="foot-btn" id="undoBtn" disabled>↩ 取消</button>
+      <button class="foot-btn" id="backupBtn">💾 保存</button>
+      <button class="foot-btn" id="restoreBtn">📂 復元</button>
+      <button class="foot-btn" id="editModeBtn">✏️ 編集</button>
+    </div>
+  </div>
+
+  <div id="dutyModeHeader" style="display:none;">
+    <nav class="tabs" id="dutySubNav">
+      <button data-dsub="pref" class="active">希望表</button>
+      <button data-dsub="calendar">カレンダー</button>
+      <button data-dsub="data">データ</button>
+
+    </nav>
+    <div class="top-actions" id="dutyTopActions">
+      <button class="foot-btn" id="dutyUndoBtn" disabled>↩ 取消</button>
+      <button class="foot-btn" id="dutyBackupBtn">💾 保存</button>
+      <button class="foot-btn" id="dutyRestoreBtn">📂 復元</button>
+      <button class="foot-btn" id="editModeBtn">✏️ 編集</button>
+    </div>
+  </div>
+
+  <div class="conn-banner" id="connBanner"><span class="conn-dot"></span><span id="connBannerText">オフラインです。通信が回復すると自動的に同期されます</span></div>
+</header>
+
+<main id="main"></main>
+<main id="dutyMain" style="display:none; padding:12px 16px 16px; max-width:640px; margin:0 auto;"></main>
+
+<div class="modal-overlay" id="restoreModal">
+  <div class="modal-sheet">
+    <div class="modal-title">バックアップから復元</div>
+    <div class="modal-sub" id="restoreSub">このタブの保存済みバックアップ一覧</div>
+    <div id="backupList"></div>
+    <button class="modal-close" id="closeModal">閉じる</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="dateRefModal">
+  <div class="modal-sheet">
+    <div class="modal-title">過去の記録を見る</div>
+    <div class="modal-sub">見たい日をタップしてください</div>
+    <div id="dateRefList"></div>
+    <button class="modal-close" id="closeDateRefModal">閉じる</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="restorePasscodeModal">
+
+  <div class="modal-sheet">
+    <div class="modal-title">復元用パスコード</div>
+    <div class="modal-sub" id="restorePasscodeSub">復元するには4桁のパスコードを入力してください</div>
+    <div class="passcode-dots" id="restorePasscodeDots">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+    <div class="passcode-error" id="restorePasscodeError"></div>
+    <div class="passcode-keypad" id="restorePasscodeKeypad">
+      <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
+      <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
+      <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button>
+      <button class="passcode-empty" disabled></button><button data-key="0">0</button><button data-key="back">⌫</button>
+    </div>
+    <button class="modal-close" id="closeRestorePasscodeModal">閉じる</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="nameModal">
+  <div class="modal-sheet">
+    <div class="modal-title">あなたの名前を選んでください</div>
+    <div class="modal-sub">希望表への入力に使います。このデバイスに記憶されます</div>
+    <div id="nameList"></div>
+    <button class="modal-close" id="closeNameModal">閉じる</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="specialDateModal">
+  <div class="modal-sheet">
+    <div class="modal-title">特例日を管理</div>
+    <div class="modal-sub">土日・祝日以外に管理が必要な日の追加や、その日のポイントの変更ができます</div>
+    <div id="specialDateForm"></div>
+    <div id="specialDateList"></div>
+    <button class="modal-close" id="closeSpecialDateModal">閉じる</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="taskSyncModal">
+  <div class="modal-sheet">
+    <div class="modal-title" id="taskSyncTitle">他の時間帯からも削除しますか？</div>
+    <div class="modal-sub" id="taskSyncSub">同じ内容のタスクが見つかりました。合わせて削除するものを選んでください</div>
+    <div class="sync-modal-list" id="taskSyncList"></div>
+    <div class="sync-modal-actions">
+      <button class="primary" id="taskSyncConfirm">削除する</button>
+      <button class="cancel" id="taskSyncCancel">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="dutyRestoreModal">
+  <div class="modal-sheet">
+    <div class="modal-title">当番管理のバックアップから復元</div>
+    <div class="modal-sub">名簿・特例日・集計設定を復元します(希望表・カレンダーの入力自体は対象外です)</div>
+    <div id="dutyBackupList"></div>
+    <button class="modal-close" id="closeDutyRestoreModal">閉じる</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="rosterModal">
+  <div class="modal-sheet">
+    <div class="modal-title">名簿を管理</div>
+    <div class="modal-sub">新規氏名追加、削除ができます(管理者のみ)</div>
+    <div style="display:flex; gap:8px; margin-bottom:12px;">
+      <input type="text" id="rosterNewName" placeholder="名前を入力" style="flex:1; border:1px solid var(--line); border-radius:10px; padding:9px;">
+      <button id="rosterAddBtn" style="border:none; background:var(--leaf-600); color:#fff; border-radius:10px; padding:9px 14px; font-weight:700;">追加</button>
+    </div>
+    <div id="rosterList"></div>
+    <button class="modal-close" id="closeRosterModal">閉じる</button>
+  </div>
+</div>
+
+
+<div class="modal-overlay" id="periodModal">
+  <div class="modal-sheet">
+    <div class="modal-title">集計期間を編集</div>
+    <div class="modal-sub">期間の追加・削除ができます。期間を削除しても希望表や当番カレンダーの実データは削除されません。</div>
+    <button id="periodAddBtn" style="width:100%; border:none; background:var(--leaf-600); color:#fff; border-radius:10px; padding:11px; font-weight:700; cursor:pointer; margin-bottom:12px;">＋ 新しい期間を追加</button>
+    <div id="periodList"></div>
+    <button class="modal-close" id="closePeriodModal">閉じる</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="calendarDayModal">
+  <div class="modal-sheet">
+    <div class="modal-title" id="calDayTitle">日付</div>
+    <div id="calDayBody"></div>
+    <button class="modal-close" id="closeCalDayModal">閉じる</button>
+  </div>
+</div>
+<div class="modal-overlay" id="monthDataModal">
+  <div class="modal-sheet">
+    <div class="modal-title">月別データを表示</div>
+    <div class="modal-sub" id="monthDataSub">条件を選んで表示します</div>
+    <div id="monthDataBody"></div>
+    <button class="modal-close" id="closeMonthDataModal">閉じる</button>
+  </div>
+</div>
+<div class="modal-overlay" id="kanriboModal">
+  <div class="modal-sheet">
+    <div class="modal-title">📋 管理簿（苗テラス）</div>
+    <div class="modal-sub">温度・CO2濃度・圧力を記入してください</div>
+    <div id="kanriboBody"></div>
+    <button class="modal-close" id="closeKanriboModal">閉じる</button>
+  </div>
+</div>
+<div class="modal-overlay" id="baiyoekiModal">
+  <div class="modal-sheet">
+    <div class="modal-title">📋 培養液記録シート（苗テラス）</div>
+    <div class="modal-sub">培養液のEC・pH・残量を記入してください（毎週土曜日のみ記入できます）</div>
+    <div id="baiyoekiBody"></div>
+    <button class="modal-close" id="closeBaiyoekiModal">閉じる</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Firebase SDK (compat版。設定は下部スクリプト内 firebaseConfig を参照) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-check-compat.js"></script>
+<script>
+/* html2canvas / jsPDF はPDF出力機能でしか使わないため、
+   ページ読み込み時ではなく実際にPDF出力ボタンが押された時にだけ読み込む(初期表示を軽くするため) */
+let _pdfLibsPromise = null;
+function loadPdfLibs(){
+  if(_pdfLibsPromise) return _pdfLibsPromise;
+  function loadScript(src){
+    return new Promise((resolve, reject)=>{
+      const s = document.createElement("script");
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = ()=>reject(new Error("failed to load "+src));
+      document.head.appendChild(s);
+    });
+  }
+  _pdfLibsPromise = Promise.all([
+    loadScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"),
+    loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js")
+  ]).catch(e=>{
+    _pdfLibsPromise = null; // 失敗時は次回また読み込み直せるようにする
+    throw e;
+  });
+  return _pdfLibsPromise;
+}
+</script>
+<script>
+  function toggleTheme(){
+  // アイコン(🌙/☀️)はCSS側(html[data-theme]セレクタ)で自動的に切り替わるため、
+  // JSでの明示的な書き換えは不要（起動時の一瞬だけ🌙→☀️と入れ替わるチラつきの原因だった）。
+  var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  var curtain = document.getElementById('themeCurtain');
+  if(!curtain){
+    // 万一カーテン要素が無い場合は従来通り即切り替え
+    document.documentElement.dataset.theme = next;
+    return;
+  }
+  // 1) 切り替え後の背景色でカーテンを画面全体にフェードイン（覆い隠す）
+  curtain.style.background = (next === 'dark') ? '#14181a' : '#f2efe4';
+  curtain.style.opacity = '1';
+  // 2) カーテンが覆い切ったタイミングで、実際のテーマを裏側で切り替える
+  window.setTimeout(function(){
+    document.documentElement.dataset.theme = next;
+    // 3) 切り替え済みの画面をカーテンごしにフェードアウトさせて見せる
+    requestAnimationFrame(function(){
+      curtain.style.opacity = '0';
+    });
+  }, 260);
+}
+/* =========================================================================
+   Firebase 設定
+   -------------------------------------------------------------------------
+   下記の値を、ご自身の Firebase プロジェクトの設定に書き換えてください。
+   1. https://console.firebase.google.com/ でプロジェクトを作成
+   2. 「Firestore Database」を作成（本番環境モードでOK。下記ルール参照）
+   3. プロジェクト設定 → 全般 → 「マイアプリ」→ ウェブアプリを追加 →
+      表示される firebaseConfig の値をここに貼り付け
+   4. Authentication → Sign-in method → 「匿名」を有効化
+   5. Firestore の「ルール」タブに以下を設定して「公開」：
+
+      rules_version = '2';
+      service cloud.firestore {
+        match /databases/{database}/documents {
+          match /{document=**} {
+            allow read, write: if request.auth != null;
+          }
+        }
+      }
+
+      ※ アプリが自動で匿名ログインしてからFirestoreにアクセスするため、
+        利用者が何かをログインする必要はありません。ただし、Firestoreへの
+        直接アクセス（アプリを経由しないアクセス）は防げます。
+   ========================================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyBsenI7Zp4ECZprIsM2kUVC-63ncIF8HvE",
+  authDomain: "kyujitukanri.firebaseapp.com",
+  projectId: "kyujitukanri",
+  storageBucket: "kyujitukanri.firebasestorage.app",
+  messagingSenderId: "643196836428",
+  appId: "1:643196836428:web:0f847a664907bb9dddf2e9"
+};
+// Firebase Console → App Check → このアプリを登録 → reCAPTCHA v3 で発行されたサイトキーを貼る
+const RECAPTCHA_V3_SITE_KEY = "6LcAppctAAAAAMGN6vJnQqITfS-nH4-A3-Tg5uLu";
+// ローカルで動作確認する時だけ有効化（本番公開時はコメントアウトのままでOK）
+// self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+   
+const HISTORY_DAYS = 7; // 過去何日分の記録を保持するか
+const PROTOCOL_REV = "039"; // internal build tag — do not remove
+const BACKUP_LIMIT = 100; // バックアップの保持件数
+
+let db = null;
+let firebaseReady = false;
+
+function isConfigPlaceholder(){
+  return !firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY";
+}
+
+/* 指定ms以内にpromiseが解決/拒否しなければ強制的にreject（timeout）する。
+   iOS/Safari(特にホーム画面追加=standalone起動時)ではFirebase Auth/Firestoreが
+   内部で使うIndexedDBがまれに開かないまま固まり、Promiseが永久に解決しない
+   既知のWebKit不具合がある。これをそのまま待ち続けると画面が固まって見えるため、
+   Firebase関連の待ち受けは必ずこのタイムアウトでガードする。 */
+function withTimeout(promise, ms, tag){
+  return Promise.race([
+    promise,
+    new Promise((_, reject)=> setTimeout(()=> reject(Object.assign(new Error(tag||"timeout"), { isTimeout:true })), ms))
+  ]);
+}
+// 個々のFirestore呼び出し(get/set/delete)専用の短縮ラッパー。
+// iOS SafariのIndexedDBハング不具合は認証だけでなく、あらゆるFirestore
+// 通信で起こりうるため、起動時に呼ぶ主要なget/set/deleteはすべてこれで
+// 包み、8秒で見切りをつけて呼び出し元の既存のtry/catch(既定値へのフォール
+// バック)に処理を戻す。
+const FS_OP_TIMEOUT_MS = 6000;
+function withDbTimeout(promise, tag){
+  return withTimeout(promise, FS_OP_TIMEOUT_MS, tag);
+}
+// タブ切り替え時など「失敗すると表示が崩れる/固まる」重要な読み込みは、
+// 1回タイムアウトしただけで諦めず、少し間をおいて1回だけ再試行する。
+// fnは呼び出すたびに新しいPromiseを生成する関数を渡すこと（同じPromiseを
+// 使い回すと再試行の意味がないため）。
+function withDbTimeoutRetry(fn, tag, attempts){
+  attempts = attempts || 2;
+  return (async ()=>{
+    let lastErr;
+    for(let i=1;i<=attempts;i++){
+      try{
+        return await withDbTimeout(fn(), tag);
+      }catch(e){
+        lastErr = e;
+        if(i<attempts) await new Promise(r=>setTimeout(r, 600));
+      }
+    }
+    throw lastErr;
+  })();
+}
+
+/* 希望表専用の長待ち読込。
+   iPadOS 18.7.10ではFirestoreのreadが20〜30秒後に正常完了する実例があるため、
+   6秒タイムアウトで同じreadを再発行せず、最初の1本を最大30秒そのまま待つ。 */
+function withPreferenceLongWait(promise, tag, onSlow, onLong){
+  let settled = false;
+  const slowTimer = setTimeout(()=>{
+    if(!settled && typeof onSlow==="function") onSlow();
+  }, 6000);
+  const longTimer = setTimeout(()=>{
+    if(!settled && typeof onLong==="function") onLong();
+  }, 15000);
+
+  const guarded = Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject)=>setTimeout(()=>{
+      reject(Object.assign(new Error(tag||"preferencesRange-get-timeout"), {isTimeout:true}));
+    }, 30000))
+  ]);
+
+  return guarded.finally(()=>{
+    settled = true;
+    clearTimeout(slowTimer);
+    clearTimeout(longTimer);
+  });
+}
+
+/* ---------- 起動時の読み込み進捗表示 ---------- */
+// 「今どの段階か」を画面下部の小さなテキストに出すだけでなく、
+// ウォッチドッグが「どこで止まったか」を報告する時にも使えるよう
+// 直近の段階名を変数にも保持しておく。
+let currentLoadingStepLabel = "起動中…";
+function setLoadingStep(label){
+  currentLoadingStepLabel = label;
+  const el = document.getElementById("appLoadingStep");
+  if(el) el.textContent = label;
+}
+
+async function initFirebase(){
+  if(isConfigPlaceholder()){
+    showConfigBanner();
+    return;
+  }
+  try{
+    setLoadingStep("Firebaseに接続中…");
+    firebase.initializeApp(firebaseConfig);
+    if(RECAPTCHA_V3_SITE_KEY && RECAPTCHA_V3_SITE_KEY !== "YOUR_RECAPTCHA_V3_SITE_KEY"){
+      firebase.appCheck().activate(RECAPTCHA_V3_SITE_KEY, true);
+    }
+    db = firebase.firestore();
+    // 学校・施設のWi-Fi/ファイアウォールなど一部のネットワークでは、Firestoreが
+    // 標準で使う常時接続(WebChannelのストリーミング)がブロック・妨害され、
+    // 特に書き込み用のWrite/channel接続だけが延々ペンディングのまま固まり、
+    // 読み込みは通るのに書き込みだけ反映されない、という症状が起きることがある。
+    // 通信方式を自動検出の長めポーリング(通常のHTTPリクエストの繰り返し)に
+    // 切り替えることで、この種のネットワーク制限を回避しやすくする。
+    try{ db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); }catch(e){ /* 失敗しても既定の接続方式で続行 */ }
+    // enablePersistence（IndexedDBへのオフライン永続化）は意図的に無効化している。
+    // SafariのIndexedDB実装には、初回アクセス時やバックグラウンド復帰時に
+    // open()やトランザクションのPromiseが解決も失敗もせず永久にハングする
+    // 既知の不具合があり(WebKit側で長年未修正)、Firestoreの永続化機能は
+    // これに直撃しやすい。ラボ内ツールとして常時オンライン運用が前提であり、
+    // オフラインでの前回データ閲覧やタブ間状態共有は実運用上ほぼ不要なため、
+    // このバグの主要な発生源を減らす目的で無効化する。
+    // （インメモリキャッシュ自体はenablePersistenceなしでも有効なので、
+    //   オンライン時の通常動作・速度には影響しない）
+    // Authの既定の永続化(indexedDB)がiOS Safariでハングすることがあるため、
+    // localStorageベースの永続化に切り替えてから匿名ログインする。
+    // これ自体が失敗しても致命的ではないので握りつぶして続行する。
+    try{ await withTimeout(firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL), 3000, "persistence-timeout"); }catch(e){ /* 失敗しても続行 */ }
+    setLoadingStep("ログイン中…");
+    await withTimeout(new Promise((resolve, reject)=>{
+      firebase.auth().onAuthStateChanged(user=>{
+        if(user){ resolve(); }
+      }, reject);
+      firebase.auth().signInAnonymously().catch(reject);
+    }), 10000, "auth-timeout");
+    firebaseReady = true;
+  }catch(e){
+    firebaseReady = false;
+    if(e && e.isTimeout){
+      showToast("読み込みに時間がかかっています。通信状況をご確認のうえ再読み込みしてください");
+    }else{
+      showToast("Firebaseの初期化に失敗しました。設定を確認してください");
+    }
+  }
+}
+
+function showConfigBanner(){
+  const main = document.getElementById("main");
+  const banner = document.createElement("div");
+  banner.className = "config-banner";
+  banner.innerHTML = `⚠️ Firebaseが未設定です。HTMLファイル内の <code>firebaseConfig</code> をご自身のプロジェクトの値に書き換えてください。設定するまでデータは保存・同期されません。`;
+  main.appendChild(banner);
+}
+
+/* ---------- 接続状態バナー ---------- */
+function setupConnectionBanner(){
+  updateConnBanner();
+  window.addEventListener("online", updateConnBanner);
+  window.addEventListener("offline", updateConnBanner);
+}
+function updateConnBanner(){
+  const banner = document.getElementById("connBanner");
+  const text = document.getElementById("connBannerText");
+  if(!navigator.onLine){
+    text.textContent = "オフラインです。通信が回復すると自動的に同期されます";
+    banner.classList.add("show");
+  }else{
+    banner.classList.remove("show");
+  }
+}
+function flashConnError(msg){
+  const banner = document.getElementById("connBanner");
+  const text = document.getElementById("connBannerText");
+  text.textContent = msg || "通信エラーが発生しました。しばらくして再度お試しください";
+  banner.classList.add("show");
+  clearTimeout(flashConnError._tm);
+  flashConnError._tm = setTimeout(()=>{ if(navigator.onLine) banner.classList.remove("show"); }, 4000);
+}
+/* エラーの原因（オフライン/権限/その他）を添えたメッセージを作る共通ヘルパー */
+function errDetail(e){
+  if(!navigator.onLine) return "オフラインです";
+  if(e && e.code==="permission-denied") return "アクセス権限がありません";
+  if(e && e.code) return e.code;
+  if(e && e.message) return e.message;
+  return "原因不明のエラー";
+}
+function connErrFail(action, e){
+  flashConnError(`${action}に失敗しました（${errDetail(e)}）`);
+}
+function toastFail(action, e){
+  showToast(`${action}に失敗しました（${errDetail(e)}）`);
+}
+
+/* ---------- 初期タスクデータ (初回起動時にFirestoreへ書き込まれます。以後はFirestore側が正になります) ---------- */
+const INITIAL_DATA = {
+  asa: {
+    label: "朝管理",
+    sections: [
+      { name:"裏の畑", assignee:"辻", tasks:["フィールド科学演習 水やり"] },
+      { name:"1号", assignee:"諏訪田", tasks:["メロン、スイカ 萎れ確認","通路散水"] },
+      { name:"1号隣の畑", assignee:"橋本・中野真", tasks:["水やり(入口のヒマワリに注意)"] },
+      { name:"2号", assignee:"清水・新宮", tasks:["晴れの日は側窓を開ける","カボチャ、オクラ水やり(ジョウロで/杉山)","メロン底面給液(8トレイ、4箱使用)","奥のトマト培養液追加(青コンテナ ロックウール2/3程度・プラントボックス並々)","トマト エアー萎れ確認","モリンガ 土が乾いていたら水やり(辻)"] },
+      { name:"苗テラス", assignee:"", tasks:["4段すべての排水口のごみを取る","管理簿記入","除湿機右横のタンク水を捨て、再度電源を入れる"] },
+      { name:"苗テラス横貯蔵庫", assignee:"鈴木", tasks:["確認"] },
+      { name:"圃場実験室", assignee:"", tasks:["日曜日のみ EC・PHメーターの校正、内部液が減っていたら補充"] },
+      { name:"3号", assignee:"伊藤", tasks:["確認"] },
+      { name:"3号裏", assignee:"河野", tasks:["エダマメ水やり(ネットを被せているもの)"] },
+      { name:"4号", assignee:"", tasks:["片付け"] },
+      { name:"4号裏", assignee:"杉山", tasks:["エダマメ水やり(白プランター/河野)"] },
+      { name:"5号手前", assignee:"杉山", tasks:["通路散水","雨天時のみ側窓を閉める(晴れの日は忘れず開ける)","通路散水(雨天時不要)"] },
+      { name:"5号奥", assignee:"瀬川", tasks:["天窓内張りの開け閉めは不要"] },
+      { name:"わさび小屋", assignee:"鈴木", tasks:["通路散水(雨天時不要)","水耕、土耕 エアー、萎れ確認","水耕培養液(300Lタンク1/2単位)追加、ワグネルポット満タンに","水耕開花数調査(スプレッドシート参照/根元付近の花を見落とさない)","土耕水やり(排水口から水が出るまでたっぷり/植物体にかからないよう)"] },
+      { name:"6号", assignee:"中野真・橋本", tasks:["6号ファイル参照","通路散水(晴天のみ)","A列メロン 萎れタンク容量確認","C列全ての植物 萎れ確認・水追加(ワグネルいっぱいまで)"] },
+      { name:"7号", assignee:"中野翔（異常があれば連絡）", tasks:["萎れ確認","培養液残量確認(栽培ベッド下 全てのタンク)","給液装置の水漏れ確認","通路散水(地面が湿る程度、水たまり不可)"] },
+      { name:"8号手前", assignee:"滝口", tasks:["通路散水(雨天時不要)","オクラ培養液追加(ポットが半分浸かるくらい)"] },
+      { name:"8号奥", assignee:"", tasks:["通路散水(晴天のみ)","8号ファイル参照"] },
+      { name:"4階実験室", assignee:"", tasks:["日曜日のみPHメーターの校正、内部液が減っていたら補充","各月の最終日曜日のみPHメーターの内部液交換"] },
+      { name:"4階機器室", assignee:"", tasks:["おじぎ草水やり(スポイト一杯ずつ)"] },
+      { name:"下の畑", assignee:"杉山", tasks:["野菜たち水やり(全体的に満遍なくたっぷりと)","収穫"] }
+    ]
+  },
+  hiru: {
+    label: "昼管理",
+    sections: [
+      { name:"1号", assignee:"諏訪田", tasks:["メロン、スイカ 萎れ確認","通路散水"] },
+      { name:"2号", assignee:"清水・新宮", tasks:["トマトエアー、萎れ確認(青コンテナ)"] },
+      { name:"3号", assignee:"", tasks:["空芯菜(ワグネルポット)培養液追加(ロックウールが半分浸かるくらいで)","通路散水"] },
+      { name:"4号", assignee:"", tasks:["ハウス内の奥にあるトマト、底面給液","パイプの上の72穴セルトレイトマト苗 底面給液(水道水)"] },
+      { name:"4号奥", assignee:"", tasks:[] },
+      { name:"苗テラス", assignee:"", tasks:["培養液pH、EC測定(土曜のみ)","培養液残量確認、培養液作成(水位15cm以下のとき)(土曜のみ)"] },
+      { name:"苗テラス横貯蔵庫", assignee:"鈴木", tasks:[] },
+      { name:"5号奥", assignee:"瀬川", tasks:["イチゴ萎れ確認"] },
+      { name:"5号手前", assignee:"杉山", tasks:["雨天時のみ側窓を閉める(晴れの日は忘れず開ける)","通路散水(雨天時不要)"] },
+      { name:"わさび小屋", assignee:"鈴木", tasks:["通路散水(雨天時不要)","水耕、土耕 エアー、萎れ確認"] },
+      { name:"6号", assignee:"中野真・橋本", tasks:["通路散水(晴天のみ)","A列メロン 萎れタンク容量確認","C列全ての植物 萎れ確認"] },
+      { name:"7号", assignee:"中野翔", tasks:["萎れ確認","給液装置の水漏れ確認","通路散水(地面が湿る程度、水たまりができないように)雨天時不要"] },
+      { name:"8号手前", assignee:"滝口", tasks:[] },
+      { name:"8号奥", assignee:"", tasks:["通路散水(晴天のみ)"] },
+      { name:"下の畑", assignee:"杉山", tasks:["野菜たち水やり(全体的に満遍なくたっぷりと)"] },
+      { name:"4階実験室", assignee:"", tasks:[] },
+      { name:"一階機械室", assignee:"", tasks:[] }
+    ]
+  },
+  yugata: {
+    label: "夕管理",
+    sections: [
+      { name:"1号", assignee:"諏訪田", tasks:["給廃液のEC、質量計測","メロン、スイカ 萎れ確認","通路散水"] },
+      { name:"苗テラス横貯蔵庫", assignee:"鈴木", tasks:["確認"] },
+      { name:"苗テラス", assignee:"", tasks:["除湿機右横のタンク水を捨て、再度電源を入れる"] },
+      { name:"2号", assignee:"清水・新宮", tasks:["雨の日は側窓を閉める","エアー、萎れ確認(青コンテナ)","トマト培養液追加(発泡スチロール満タンに)","エダマメ 土が乾いていたら水やり(河野)"] },
+      { name:"3号", assignee:"伊藤", tasks:["空芯菜は自由に収穫OK(上から25cmくらいで切る)","通路散水"] },
+      { name:"4号", assignee:"", tasks:["確認"] },
+      { name:"4号裏", assignee:"杉山", tasks:["確認"] },
+      { name:"5号手前", assignee:"杉山", tasks:["雨天時のみ側窓を閉める(晴れの日は忘れず開ける)","通路散水(雨天時不要)"] },
+      { name:"わさび小屋", assignee:"鈴木", tasks:["通路散水(雨天時不要)","水耕、土耕 エアー、萎れ確認","土耕水やり(排水口から水が出るまで)"] },
+      { name:"5号奥", assignee:"瀬川", tasks:["EC測定、重量測定"] },
+      { name:"6号", assignee:"中野真・橋本", tasks:["A列メロン 区画5(1番奥) バケツの培養液を全て緑タンクに戻す","A列メロン 萎れタンク容量確認"] },
+      { name:"7号", assignee:"中野翔", tasks:["萎れ確認","培養液残量確認(栽培ベッド下 全てのタンク)","給液装置の水漏れ確認","通路散水(地面が湿る程度、水たまり不可)"] },
+      { name:"8号手前", assignee:"滝口", tasks:["確認"] },
+      { name:"8号奥", assignee:"", tasks:["通路散水(晴天のみ)"] },
+      { name:"圃場実験室", assignee:"", tasks:["確認"] },
+      { name:"1階機器室", assignee:"", tasks:["確認"] },
+      { name:"4階機器室", assignee:"", tasks:["確認"] },
+      { name:"4階実験室", assignee:"", tasks:["466室冷凍庫の扉、温度確認"] }
+    ]
+  }
+};
+
+/* ---------- utils ---------- */
+// 朝/昼/夕の一覧管理（他タブへのコピー・連動削除機能で使用。場所は「同じ名前のセクション」で対応付けする）
+const TAB_ORDER = ["asa","hiru","yugata"];
+const TAB_LABELS = { asa:"朝", hiru:"昼", yugata:"夕" };
+function otherTabsOf(tab){ return TAB_ORDER.filter(t=>t!==tab); }
+// 他タブとの連動(追加コピー/編集/削除)で「同じタスク」とみなす条件。
+// 場所(セクション)は名前で対応付けるが、タスク本文だけで判定すると、同じ場所に
+// 担当者違いで文言が完全一致するタスクが複数あった場合に誤って連動してしまうため、
+// タスクごとの担当者名も一致することを条件に加える。
+function isSameTask(a,b){
+  if(!a || !b) return false;
+  return a.text===b.text && (a.assignee||"")===(b.assignee||"");
+}
+function pad(n){ return n<10 ? "0"+n : ""+n; }
+function genId(prefix){ return prefix+"_"+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function formatDateStr(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+function getTodayStr(){ return formatDateStr(new Date()); }
+function parseDateStr(dateStr){ return new Date(dateStr+"T00:00:00"); }
+function dowLabelForDate(d){
+  const days=["日","月","火","水","木","金","土"];
+  return (d.getMonth()+1)+"/"+d.getDate()+"("+days[d.getDay()]+")";
+}
+function dowLabel(){ return dowLabelForDate(new Date()); }
+function shortDowLabel(dateStr){
+  const days=["日","月","火","水","木","金","土"];
+  const d = parseDateStr(dateStr);
+  return { md:(d.getMonth()+1)+"/"+d.getDate(), dow:days[d.getDay()] };
+}
+/* ---------- 曜日限定タスクの判定 ---------- */
+function getTaskDayRestriction(text){
+  if(/最終日曜日のみ/.test(text)) return "lastSunday";
+  if(/日曜日のみ/.test(text)) return "sunday";
+  if(/土曜日のみ/.test(text)) return "saturday";
+  return null;
+}
+function isLastSundayOfMonth(d){
+  const next = new Date(d.getFullYear(), d.getMonth(), d.getDate()+7);
+  return d.getDay()===0 && next.getMonth()!==d.getMonth();
+}
+function isTaskActiveToday(text){
+  const restriction = getTaskDayRestriction(text);
+  if(!restriction) return true;
+  const today = new Date();
+  if(restriction==="sunday") return today.getDay()===0;
+  if(restriction==="saturday") return today.getDay()===6;
+  if(restriction==="lastSunday") return isLastSundayOfMonth(today);
+  return true;
+}
+
+/* 直近N日分の日付文字列を新しい順(今日が先頭)で返す */
+function getLastNDays(n){
+  const arr=[];
+  const base=new Date();
+  for(let i=0;i<n;i++){
+    const dt=new Date(base);
+    dt.setDate(base.getDate()-i);
+    arr.push(formatDateStr(dt));
+  }
+  return arr;
+}
+function escapeHtml(str){
+  return String(str)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+function circledNumber(n){
+  if(n===0) return "⓪";
+  if(n>=1 && n<=20) return String.fromCodePoint(0x2460 + (n-1));   // ①〜⑳
+  if(n>=21 && n<=35) return String.fromCodePoint(0x3251 + (n-21)); // ㉑〜㉟
+  if(n>=36 && n<=50) return String.fromCodePoint(0x32B1 + (n-36)); // ㊱〜㊿
+  return `(${n})`; // 51回以上は丸数字の文字がないため括弧表記にフォールバック
+}
+
+  async function downloadCalendarMonthPdf(idx){
+  const target = document.getElementById("calMonthBlock"+idx);
+  if(!target) return;
+  showToast("PDFを作成しています…");
+  const printBtn = target.querySelector("[data-print-month]");
+  try{
+    await loadPdfLibs();
+    if(printBtn) printBtn.style.visibility = "hidden";
+    const canvas = await html2canvas(target, { scale:2, backgroundColor:"#ffffff", useCORS:true });
+    if(printBtn) printBtn.style.visibility = "";
+    const imgData = canvas.toDataURL("image/png");
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation:"portrait", unit:"pt", format:"a4" });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const ratio = Math.min(pageWidth/canvas.width, pageHeight/canvas.height);
+    const imgW = canvas.width*ratio;
+    const imgH = canvas.height*ratio;
+    pdf.addImage(imgData, "PNG", (pageWidth-imgW)/2, 30, imgW, imgH);
+    const fileLabel = `${target.dataset.year}年${target.dataset.month}月`;
+    pdf.save(`${fileLabel}_当番カレンダー.pdf`);
+    showToast("PDFを保存しました");
+  }catch(e){
+    if(printBtn) printBtn.style.visibility = "";
+    showToast("PDFの作成に失敗しました");
+  }
+}
+/* URLの自動リンク化: HTMLエスケープ後にURLをaタグへ置換 */
+function linkify(str){
+  const escaped = escapeHtml(str);
+  const urlRe = /(https?:\/\/[^\s<]+[^\s<.,;:!?)\]}'"])/g;
+  return escaped.replace(urlRe, (url)=>`<a href="${url}" class="task-link" target="_blank" rel="noopener noreferrer">${url}</a>`);
+}
+
+function withIds(rawSections){
+  return rawSections.map(s=>({
+    id: genId("s"),
+    name: s.name,
+    assignee: s.assignee||"",
+    tasks: s.tasks.map(t=>({ id: genId("t"), text: t, assignee:"" }))
+  }));
+}
+
+function diffStructures(current, backup){
+  const curById={}; (current||[]).forEach(s=>curById[s.id]=s);
+  const bkById={}; (backup||[]).forEach(s=>bkById[s.id]=s);
+  const orderedIds=[]; const seen=new Set();
+  (backup||[]).forEach(s=>{ if(!seen.has(s.id)){ orderedIds.push(s.id); seen.add(s.id); } });
+  (current||[]).forEach(s=>{ if(!seen.has(s.id)){ orderedIds.push(s.id); seen.add(s.id); } });
+  return orderedIds.map(id=>{
+    const b=bkById[id], c=curById[id];
+    if(b && !c) return { status:"added", name:b.name, assignee:b.assignee, taskDiffs:b.tasks.map(t=>({status:"added",text:t.text,assignee:t.assignee})) };
+    if(!b && c) return { status:"removed", name:c.name, assignee:c.assignee, taskDiffs:c.tasks.map(t=>({status:"removed",text:t.text,assignee:t.assignee})) };
+    const sectionChanged = b.name!==c.name || (b.assignee||"")!==(c.assignee||"");
+    const curTaskById={}; c.tasks.forEach(t=>curTaskById[t.id]=t);
+    const bkTaskById={}; b.tasks.forEach(t=>bkTaskById[t.id]=t);
+    const taskIds=[]; const seenT=new Set();
+    b.tasks.forEach(t=>{ if(!seenT.has(t.id)){ taskIds.push(t.id); seenT.add(t.id);} });
+    c.tasks.forEach(t=>{ if(!seenT.has(t.id)){ taskIds.push(t.id); seenT.add(t.id);} });
+    const taskDiffs = taskIds.map(tid=>{
+      const bt=bkTaskById[tid], ct=curTaskById[tid];
+      if(bt && !ct) return { status:"added", text:bt.text, assignee:bt.assignee };
+      if(!bt && ct) return { status:"removed", text:ct.text, assignee:ct.assignee };
+      const changed = bt.text!==ct.text || (bt.assignee||"")!==(ct.assignee||"");
+      return { status:changed?"changed":"same", text:bt.text, assignee:bt.assignee };
+    });
+    return { status:sectionChanged?"changed":"same", name:b.name, assignee:b.assignee, taskDiffs };
+  });
+}
+
+/* ---------- state ---------- */
+let currentTab = "asa";
+let structures = {};      // tab -> sections[]
+let todayChecked = {};    // 今日分のチェック(リアルタイム同期される実データ)
+// タブ別の直近チェック状態をメモリに保持する。
+// iOS/iPadOS では Firestore/IndexedDB の応答が遅れることがあるため、
+// タブ再訪時は通信を待たずこのキャッシュを即表示し、購読で後から最新化する。
+let todayCheckedCache = { asa:null, hiru:null, yugata:null };
+let checkedMap = {};      // 現在画面に表示中のチェック(今日 or 過去の記録)
+let openSections = {};
+let editMode = false;
+let todayStr = "";
+let viewDate = "";         // 現在表示中の日付(YYYY-MM-DD)
+let viewDateAssignees = []; // 現在表示中の日の当番(名前の配列)
+let dateStats = {};        // 日付ごとの{done,total}(直近7日分)
+let undoStacks = { asa:[], hiru:[], yugata:[] };
+const UNDO_LIMIT = 20;
+
+let unsubStructure = null;
+let unsubChecks = null;
+
+// タブ切り替えのたびに増える世代カウンタ。連打などでloadTab()の呼び出しが
+// 重なった場合に、後から解決した「古い方」の結果が新しい方を上書きしてしまう
+// のを防ぐために使う（各loadTab呼び出しは自分の世代番号を覚えておき、
+// 完了時に最新世代でなければ描画・購読をスキップする）。
+let loadTabGeneration = 0;
+
+function isHistoryMode(){ return viewDate !== todayStr; }
+
+function isPlaceholderStructure(sections){
+  if(!sections || sections.length===0) return true;
+  return sections.length===1
+    && sections[0].name==="新しい場所"
+    && sections[0].tasks.length===1
+    && sections[0].tasks[0].text==="ここにタスクを追加してください";
+}
+
+/* ---------- Firestore refs ---------- */
+function structureRef(tab){ return db.collection("structures").doc(tab); }
+function checksRef(tab, day){ return db.collection("checks").doc(tab+"_"+day); }
+function metaRef(){ return db.collection("meta").doc("flags"); }
+function backupsCol(tab){ return db.collection("backups_"+tab); }
+
+function countStats(tab, checks){
+  const sections = structures[tab] || [];
+  let total=0, done=0;
+  sections.forEach(s=>s.tasks.forEach(t=>{
+    if(!isTaskActiveToday(t.text)) return;
+    total++; if(checks[t.id]) done++;
+  }));
+  return { total, done };
+}
+
+/* ---------- 初回ロード（構成データの取得・移行処理）---------- */
+async function ensureStructureLoaded(tab){
+  if(!firebaseReady){
+    structures[tab] = structures[tab] || withIds(INITIAL_DATA[tab].sections);
+    return structures[tab];
+  }
+  try{
+    const snap = await withDbTimeoutRetry(()=>structureRef(tab).get(), "structure-get-timeout");
+    if(snap.exists && snap.data() && snap.data().sections){
+      let loaded = snap.data().sections;
+      if(isPlaceholderStructure(loaded)){
+        const reseeded = withIds(INITIAL_DATA[tab].sections);
+        structures[tab] = reseeded;
+        await saveStructure(tab);
+        return reseeded;
+      }
+      structures[tab] = loaded;
+      if(tab==="hiru"){ await applyHiruContentFixV2(); }
+      return structures[tab];
+    }
+    // ここに来るのは snap.exists===false の場合のみ（＝そのタブがまだ一度も
+    // 作成されていない、本当の初回起動）。この場合だけ初期データを書き込む。
+    const seeded = withIds(INITIAL_DATA[tab].sections);
+    structures[tab] = seeded;
+    await saveStructure(tab);
+    return seeded;
+  }catch(e){
+    // 【重要】取得(get)自体が失敗/タイムアウトした場合は、絶対に初期データで
+    // 上書き保存してはいけない。実際のデータがあるのに読めなかっただけの
+    // 可能性が高く、ここで書き込むと本物のデータを消してしまう。
+    // 既にメモリ上に前回分のデータがあればそれを維持し、無ければ
+    // 「保存はせず」表示だけ初期データにして、次に正常に読めた時に
+    // 正しいデータへ復旧できるようにする。
+    connErrFail("栽培管理データの取得", e);
+    if(structures[tab]) return structures[tab];
+    return withIds(INITIAL_DATA[tab].sections);
+  }
+}
+
+async function applyHiruContentFixV2(){
+  if(!firebaseReady) return;
+  try{
+    const flag = await withDbTimeout(metaRef().get(), "metaFlag-get-timeout");
+    if(flag.exists && flag.data() && flag.data().hiruContentFixV2) return;
+  }catch(e){
+    // 【重要】移行済みかどうかの確認自体が失敗した場合、「未移行」とみなして
+    // 上書きしてはいけない（実際は移行済みなのに確認できなかっただけの
+    // 可能性があり、その場合ここで実データを消してしまう）。
+    // 確認できなかった時は何もせず、次回の起動時に再確認する。
+    console.warn("hiruContentFixV2フラグの確認に失敗。今回はスキップします:", e);
+    return;
+  }
+
+  structures.hiru = withIds(INITIAL_DATA.hiru.sections);
+  await saveStructure("hiru");
+  try{ await withDbTimeout(metaRef().set({ hiruContentFixV2:true }, { merge:true }), "metaFlag-set-timeout"); }catch(e){}
+}
+
+/* ---------- 保存（自動保存） ---------- */
+async function saveStructure(tab){
+  if(!firebaseReady){ showConfigWarningOnce(); return; }
+  try{
+    await withDbTimeout(structureRef(tab).set({
+      sections: structures[tab],
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }), "structure-set-timeout");
+    scheduleAutoBackup(tab);
+  }catch(e){
+    connErrFail("栽培管理データの保存", e);
+  }
+}
+async function transactStructure(tab, mutateFn){
+  if(!firebaseReady){ showConfigWarningOnce(); return; }
+  for(let attempt=1; attempt<=2; attempt++){
+    try{
+      await withDbTimeout(db.runTransaction(async (tx)=>{
+        const snap = await tx.get(structureRef(tab));
+        const current = (snap.exists && snap.data() && snap.data().sections) ? snap.data().sections : [];
+        const updated = mutateFn(JSON.parse(JSON.stringify(current)));
+        tx.set(structureRef(tab), {
+          sections: updated,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        structures[tab] = updated;
+      }), "structure-transact-timeout");
+      scheduleAutoBackup(tab);
+      return;
+    }catch(e){
+      if(attempt < 2){
+        console.warn("栽培管理データの保存に失敗、少し待って再試行します:", e);
+        await sleep(1200);
+        continue;
+      }
+      connErrFail("栽培管理データの保存", e);
+    }
+  }
+}
+async function saveChecks(tab){
+  if(!firebaseReady){ showConfigWarningOnce(); return; }
+  const stats = countStats(tab, todayChecked);
+  dateStats[todayStr] = stats;
+  for(let attempt=1; attempt<=2; attempt++){
+    try{
+      await checksRef(tab, todayStr).set({
+        data: todayChecked,
+        stats: stats,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      scheduleAutoBackup(tab);
+      return;
+    }catch(e){
+      if(attempt < 2){
+        console.warn("チェック状態の保存に失敗、少し待って再試行します:", e);
+        await sleep(1200);
+        continue;
+      }
+      connErrFail("本日のチェック状態の保存", e);
+    }
+  }
+}
+function sleep(ms){ return new Promise(resolve=>setTimeout(resolve, ms)); }
+
+  async function transactChecks(tab, mutateFn){
+  if(!firebaseReady){ showConfigWarningOnce(); return; }
+  // 起動直後など、端末の通信/IndexedDBがまだ本調子でないタイミングでは
+  // このトランザクションが単発で失敗することがある。少し間をおいて
+  // 1回だけ静かに再試行し、それでもダメな場合だけエラー表示に回す。
+  for(let attempt=1; attempt<=2; attempt++){
+    try{
+      await db.runTransaction(async (tx)=>{
+        const snap = await tx.get(checksRef(tab, todayStr));
+        const current = (snap.exists && snap.data() && snap.data().data) ? snap.data().data : {};
+        const updated = mutateFn(JSON.parse(JSON.stringify(current)));
+        const stats = countStats(tab, updated);
+        tx.set(checksRef(tab, todayStr), {
+          data: updated,
+          stats: stats,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        todayChecked = updated;
+        todayCheckedCache[tab] = todayChecked;
+        dateStats[todayStr] = stats;
+      });
+      scheduleAutoBackup(tab);
+      return;
+    }catch(e){
+      if(attempt < 2){
+        console.warn("チェック状態の保存に失敗、少し待って再試行します:", e);
+        await sleep(1200);
+        continue;
+      }
+      connErrFail("本日のチェック状態の保存", e);
+    }
+  }
+}
+
+/* ---------- 記録シート記入と連動したタスクの自動チェック ---------- */
+async function autoCheckLinkedTask(tab, sectionName, matchFn){
+  try{
+    const sections = structures[tab] || [];
+    const sec = sections.find(s=>s.name===sectionName);
+    if(!sec) return;
+    const task = sec.tasks.find(t=>matchFn(t.text));
+    if(!task) return;
+    await transactChecks(tab, (checks)=>{
+      checks[task.id] = true;
+      return checks;
+    });
+    if(currentTab===tab){
+      checkedMap = todayChecked;
+      render();
+    }
+  }catch(e){ /* 自動チェックの失敗は記録の保存自体を妨げないため無視 */ }
+}
+
+function showConfigWarningOnce(){
+  if(showConfigWarningOnce._shown) return;
+  showConfigWarningOnce._shown = true;
+  showToast("Firebase未設定のため保存されません");
+}
+
+/* ---------- 直近7日間の記録の統計取得・古い記録の整理 ---------- */
+async function loadDateStats(tab){
+  dateStats = {};
+  if(!firebaseReady) return;
+  const days = getLastNDays(HISTORY_DAYS);
+  const oldest = days[days.length-1];
+  try{
+    const q = await withDbTimeout(db.collection("checks")
+      .where(firebase.firestore.FieldPath.documentId(), ">=", tab+"_"+oldest)
+      .where(firebase.firestore.FieldPath.documentId(), "<=", tab+"_"+todayStr)
+      .get(), "dateStats-get-timeout");
+    q.docs.forEach(doc=>{
+      const day = doc.id.slice(tab.length+1);
+      const data = doc.data();
+      dateStats[day] = data.stats || countStats(tab, data.data || {});
+    });
+  }catch(e){ /* 履歴統計の取得失敗は致命的でないため無視 */ }
+}
+async function pruneOldChecks(tab){
+  if(!firebaseReady) return;
+  const days = getLastNDays(HISTORY_DAYS);
+  const oldestKept = days[days.length-1];
+  try{
+    const q = await withDbTimeout(db.collection("checks")
+      .where(firebase.firestore.FieldPath.documentId(), ">=", tab+"_")
+      .where(firebase.firestore.FieldPath.documentId(), "<", tab+"_"+oldestKept)
+      .get(), "pruneChecks-get-timeout");
+    for(const d of q.docs){ await withDbTimeout(d.ref.delete(), "pruneChecks-delete-timeout"); }
+  }catch(e){ /* 整理失敗は無視 */ }
+}
+
+/* ---------- チェックの読み込み ---------- */
+async function loadTodayChecks(tab){
+  if(!firebaseReady){
+    todayChecked = todayCheckedCache[tab] || {};
+    todayCheckedCache[tab] = todayChecked;
+    return;
+  }
+  try{
+    const snap = await withDbTimeoutRetry(()=>checksRef(tab, todayStr).get(), "todayChecks-get-timeout");
+    todayChecked = (snap.exists && snap.data() && snap.data().data) ? snap.data().data : {};
+    todayCheckedCache[tab] = todayChecked;
+  }catch(e){
+    // 取得に失敗しても、以前取得済みの状態があれば消さずに表示を維持する。
+    todayChecked = todayCheckedCache[tab] || {};
+    flashConnError("本日のチェック状態の取得に失敗しました（" + errDetail(e) + "）");
+  }
+}
+async function loadHistoryChecks(tab, day){
+  if(!firebaseReady) return {};
+  try{
+    const snap = await withDbTimeout(checksRef(tab, day).get(), "historyChecks-get-timeout");
+    return (snap.exists && snap.data() && snap.data().data) ? snap.data().data : {};
+  }catch(e){
+    flashConnError("過去のチェック履歴の取得に失敗しました（" + errDetail(e) + "）");
+    return {};
+  }
+}
+
+/* ---------- リアルタイム同期（今日の分のみ） ---------- */
+function unsubscribeAll(){
+  if(unsubStructure){ unsubStructure(); unsubStructure=null; }
+  if(unsubChecks){ unsubChecks(); unsubChecks=null; }
+}
+function subscribeStructure(tab){
+  if(!firebaseReady) return;
+  unsubStructure = structureRef(tab).onSnapshot((snap)=>{
+    if(snap.metadata.hasPendingWrites) return; // 自分自身の書き込みは無視（二重再描画防止）
+    if(snap.exists && snap.data() && snap.data().sections){
+      structures[tab] = snap.data().sections;
+      if(tab===currentTab){ render(); updateUndoBtn(); }
+    }
+  }, (err)=>{
+    flashConnError("リアルタイム同期でエラーが発生しました");
+  });
+}
+function subscribeChecks(tab){
+  if(!firebaseReady) return;
+  unsubChecks = checksRef(tab, todayStr).onSnapshot((snap)=>{
+    if(snap.metadata.hasPendingWrites) return;
+    todayChecked = (snap.exists && snap.data() && snap.data().data) ? snap.data().data : {};
+    todayCheckedCache[tab] = todayChecked;
+    dateStats[todayStr] = (snap.exists && snap.data() && snap.data().stats) ? snap.data().stats : countStats(tab, todayChecked);
+        if(tab===currentTab && !isHistoryMode()){
+      checkedMap = todayChecked;
+      render();
+    }
+  }, (err)=>{
+    flashConnError("リアルタイム同期でエラーが発生しました");
+  });
+}
+
+/* ---------- undo（端末ローカルのみ・今日の分のみ対象） ---------- */
+function snapshot(tab){
+  return {
+    structure: JSON.parse(JSON.stringify(structures[tab])),
+    checks: JSON.parse(JSON.stringify(todayChecked))
+  };
+}
+function pushUndo(tab){
+  const stack = undoStacks[tab];
+  stack.push(snapshot(tab));
+  if(stack.length>UNDO_LIMIT) stack.shift();
+  updateUndoBtn();
+}
+async function undo(){
+  if(isHistoryMode()) return;
+  const stack = undoStacks[currentTab];
+  if(stack.length===0) return;
+  const prev = stack.pop();
+  structures[currentTab] = prev.structure;
+  todayChecked = prev.checks;
+  todayCheckedCache[currentTab] = todayChecked;
+  checkedMap = todayChecked;
+  await saveStructure(currentTab);
+  await saveChecks(currentTab);
+  updateUndoBtn();
+  render();
+  showToast("元に戻しました");
+}
+function updateUndoBtn(){
+  document.getElementById("undoBtn").disabled = isHistoryMode() || undoStacks[currentTab].length===0;
+}
+
+function showToast(msg){
+  const t=document.getElementById("toast");
+  t.textContent=msg;
+  t.classList.add("show");
+  clearTimeout(showToast._tm);
+  showToast._tm=setTimeout(()=>t.classList.remove("show"),1700);
+}
+
+function checkSvg(){
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg>';
+}
+function trashSvg(){
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6h12z"/></svg>';
+}
+function pencilSvg(){
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+}
+function upSvg(){
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>';
+}
+function downSvg(){
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+}
+
+/* ---------- タブ切り替え／初期ロード ---------- */
+async function loadTab(tab){
+  // このタブ読み込みの「世代」を記録。以後、より新しいloadTab呼び出しが
+  // 発生していたら（＝タブを連続でタップした等）、この呼び出しの結果は
+  // 画面に反映しない。
+  const myGen = ++loadTabGeneration;
+
+  todayStr = getTodayStr();
+  viewDate = todayStr;
+  document.getElementById("datePill").textContent = dowLabel();
+  unsubscribeAll();
+
+  // タブ別キャッシュがある場合は、Firestoreを待たずにその場で切り替える。
+  // 特にiOS/iPadOS 18系では IndexedDB/Firestore のPromise解決が一瞬遅れることが
+  // あるため、「表示切替」と「最新化」を分離してタップの反応を優先する。
+  const hasStructureCache = !!structures[tab];
+  const hasChecksCache = todayCheckedCache[tab] !== null;
+  if(hasChecksCache) todayChecked = todayCheckedCache[tab] || {};
+  if(hasStructureCache && myGen===loadTabGeneration && currentTab===tab){
+    checkedMap = todayChecked;
+    render();
+  }
+
+  // 初回だけget()を待つ。再訪時は既存キャッシュを使い、onSnapshotで最新化する。
+  const essentialJobs = [];
+  if(!hasStructureCache) essentialJobs.push(ensureStructureLoaded(tab));
+  if(!hasChecksCache) essentialJobs.push(loadTodayChecks(tab));
+  const essential = Promise.all(essentialJobs);
+
+  pruneOldChecks(tab); // 結果を待つ必要のない裏方処理（削除のみ）
+  loadDateStats(tab).then(()=>{
+    if(myGen===loadTabGeneration && currentTab===tab) render();
+  });
+  loadViewDateAssignees(viewDate).then(()=>{
+    if(myGen===loadTabGeneration && currentTab===tab) render();
+  });
+
+  await essential;
+  // 待っている間に別のタブへ切り替えられていたら、この呼び出しの結果は
+  // 使わない（古いタブのデータで現在の表示や購読を上書きしないため）。
+  if(myGen !== loadTabGeneration || currentTab!==tab) return;
+
+  checkedMap = todayChecked;
+  subscribeStructure(tab);
+  subscribeChecks(tab);
+  updateUndoBtn();
+  render();
+}
+
+/* 日付チップを選択して表示日を切り替える */
+async function loadViewDateAssignees(day){
+  if(!firebaseReady){ viewDateAssignees = []; return; }
+  try{
+    const snap = await withDbTimeout(calendarCol().doc(day).get(), "viewDateAssignees-get-timeout");
+    viewDateAssignees = (snap.exists && Array.isArray(snap.data().people)) ? snap.data().people : [];
+  }catch(e){ viewDateAssignees = []; }
+}
+
+async function selectDate(day){
+  if(day===viewDate) return;
+  viewDate = day;
+  if(day===todayStr){
+    checkedMap = todayChecked;
+  }else{
+    checkedMap = await loadHistoryChecks(currentTab, day);
+  }
+  await loadViewDateAssignees(day);
+  updateUndoBtn();
+  render();
+}
+
+/* ---------- render ---------- */
+function render(){
+  const main = document.getElementById("main");
+  main.innerHTML = "";
+  if(isConfigPlaceholder()){
+    showConfigBanner();
+  }
+
+  const readOnly = isHistoryMode();
+
+  if(readOnly){
+    const { md, dow } = shortDowLabel(viewDate);
+    const banner = document.createElement("div");
+    banner.className = "history-banner";
+    banner.innerHTML = `<span>📖 ${md}(${dow}) の記録を表示中（編集はできません）</span><button id="backToTodayBtn">今日に戻る</button>`;
+    main.appendChild(banner);
+        banner.querySelector("#backToTodayBtn").addEventListener("click", ()=>selectDate(todayStr));
+  }
+
+  if(isDutyDate(viewDate)){
+    const dutyBanner = document.createElement("div");
+    dutyBanner.className = "duty-of-day-banner";
+    const dLabel = readOnly ? `${shortDowLabel(viewDate).md}(${shortDowLabel(viewDate).dow})の当番` : "今日の当番";
+    dutyBanner.innerHTML = `🧑‍🌾 <b>${dLabel}:</b> ${viewDateAssignees.length ? escapeHtml(viewDateAssignees.join("・")) : "未定"}`;
+    main.appendChild(dutyBanner);
+  }
+
+  document.getElementById("undoBtn").style.display = readOnly ? "none" : "";
+  document.getElementById("undoBtn").style.display = readOnly ? "none" : "";
+  document.getElementById("backupBtn").style.display = readOnly ? "none" : "";
+  document.getElementById("backupBtn").style.display = readOnly ? "none" : "";
+  document.getElementById("editModeBtn").classList.toggle("danger", editMode);
+  document.getElementById("editModeBtn").textContent = editMode ? "✅ 完了" : "✏️ 編集";
+
+  const sections = structures[currentTab] || [];
+  let totalTasks=0, doneTasks=0;
+
+    sections.forEach((section, idx)=>{
+    const sectionKey = currentTab+":"+section.id;
+    const isOpen = !!openSections[sectionKey];
+    let sectionDone=0;
+    const activeTaskCount = section.tasks.filter(t=>isTaskActiveToday(t.text)).length;
+
+        const card=document.createElement("div");
+    card.className="section-card"+(isOpen?" open":"")+(readOnly?" readonly":"")+(activeTaskCount>0?"":" no-tasks");
+
+    const head=document.createElement("div");
+    head.className="section-head";
+            head.innerHTML=`
+      <div class="section-top-row">
+        <div class="section-title">${escapeHtml(section.name)}${section.alert?`<span class="section-alert">⚠️ ${escapeHtml(section.alert)}</span>`:``}</div>
+        <div class="section-title-actions">
+          <span class="section-count" data-count></span>
+          ${(readOnly || !isOpen) ? `` : `<button class="icon-btn" data-toggle-section="${section.id}" title="まとめてチェック" style="font-size:18px;">☑</button>`}
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+        </div>
+      </div>
+      ${(section.assignee || (!readOnly && isOpen && editMode)) ? `
+      <div class="section-sub-row">
+        <div class="section-assignee">${section.assignee?`担当: ${escapeHtml(section.assignee)}`:``}</div>
+        ${(!readOnly && isOpen && editMode) ? `
+                <div class="section-edit-actions">
+          <div class="move-stack">
+            <button data-move-section="${section.id}|up" title="上へ移動" ${idx===0?"disabled":""}>${upSvg()}</button>
+            <button data-move-section="${section.id}|down" title="下へ移動" ${idx===sections.length-1?"disabled":""}>${downSvg()}</button>
+          </div>
+          <button class="icon-btn" data-edit-assignee="${section.id}" title="担当を編集">${pencilSvg()}</button>
+          <button class="icon-btn" data-edit-alert="${section.id}" title="注意事項を編集" style="font-size:15px;">⚠️</button>
+          <button class="icon-btn" data-del-section="${section.id}" title="この場所を削除">${trashSvg()}</button>
+        </div>` : ``}
+      </div>` : ``}
+    `;
+         head.addEventListener("click",(e)=>{
+      if(e.target.closest("button")) return;
+      openSections[sectionKey]=!openSections[sectionKey];
+      render();
+    });
+    card.appendChild(head);
+
+    const list=document.createElement("div");
+    list.className="task-list";
+
+    section.tasks.forEach((task)=>{
+      const dayActive = isTaskActiveToday(task.text);
+      const isChecked=!!checkedMap[task.id];
+      if(dayActive){
+        totalTasks++;
+        if(isChecked){doneTasks++; sectionDone++;}
+      }
+      const row=document.createElement("div");
+      row.className="task-row"+(dayActive?"":" day-inactive");
+      row.innerHTML=`
+        <div class="check ${isChecked?"checked":""}${readOnly?" readonly":""}${dayActive?"":" day-inactive"}" data-id="${task.id}"${dayActive?"":' data-day-inactive="1"'}>${checkSvg()}</div>
+        <div class="task-main">
+          <div class="task-text ${isChecked?"checked":""}">${linkify(task.text)}</div>
+                                        ${task.assignee ? `<div class="task-assignee">担当: ${escapeHtml(task.assignee)}</div>` : ``}
+        </div>
+        ${(readOnly || !editMode) ? `` : `<button class="icon-btn" data-edit-task="${section.id}|${task.id}" title="タスクを編集">${pencilSvg()}</button>`}
+        ${(readOnly || !editMode) ? `` : `<button class="task-remove" data-remove-task="${section.id}|${task.id}" title="削除">×</button>`}
+      `;
+      list.appendChild(row);
+    });
+
+    if(currentTab==="asa" && section.name==="苗テラス"){
+      const entryRow=document.createElement("div");
+      entryRow.className="record-entry-row";
+      entryRow.innerHTML=`<button class="record-entry-btn" id="openKanriboBtn">📋 管理簿に記入・記録を見る</button>`;
+      list.appendChild(entryRow);
+      entryRow.querySelector("#openKanriboBtn").addEventListener("click",(e)=>{ e.stopPropagation(); openKanriboModal(); });
+    }
+    if(currentTab==="hiru" && section.name==="苗テラス"){
+      const entryRow=document.createElement("div");
+      entryRow.className="record-entry-row";
+      entryRow.innerHTML=`<button class="record-entry-btn" id="openBaiyoekiBtn">📋 培養液記録シートに記入・記録を見る</button>`;
+      list.appendChild(entryRow);
+      entryRow.querySelector("#openBaiyoekiBtn").addEventListener("click",(e)=>{ e.stopPropagation(); openBaiyoekiModal(); });
+    }
+
+    if(!readOnly && editMode){
+      const addRow=document.createElement("div");
+      addRow.className="add-row";
+      addRow.innerHTML=`
+        <input type="text" placeholder="タスクを追加" data-add-input="${section.id}" style="flex:1.6;">
+        <input type="text" placeholder="担当(任意)" data-add-assignee="${section.id}" style="flex:1;">
+        <button data-add-btn="${section.id}">追加</button>
+      `;
+      list.appendChild(addRow);
+    }
+
+    card.appendChild(list);
+    if(activeTaskCount>0 && sectionDone===activeTaskCount) card.classList.add("all-done");
+    if(section.alert) card.classList.add("has-alert");
+        const countEl = head.querySelector("[data-count]");
+    if(activeTaskCount){
+      countEl.textContent = `${sectionDone}/${activeTaskCount}`;
+      countEl.classList.remove("is-empty");
+    }else{
+      countEl.textContent = "タスクなし";
+      countEl.classList.add("is-empty");
+    }
+
+    main.appendChild(card);
+  });
+
+  if(sections.length===0){
+    const note=document.createElement("div");
+    note.className="empty-note";
+    note.textContent="まだ場所がありません。下の「＋ 新しい場所を追加」から作成してください";
+    main.appendChild(note);
+  }
+
+  if(!readOnly && editMode){
+    // add-section card
+    const addSection=document.createElement("div");
+    addSection.className="add-section-card";
+    addSection.innerHTML=`
+      <button class="add-section-toggle" id="toggleAddSection">＋ 新しい場所を追加</button>
+      <div class="add-section-form" id="addSectionForm">
+        <input type="text" id="newSectionName" placeholder="場所の名前(例: 9号)">
+        <input type="text" id="newSectionAssignee" placeholder="担当(任意)">
+        <div class="btn-row">
+          <button class="primary" id="confirmAddSection">作成</button>
+          <button class="cancel" id="cancelAddSection">キャンセル</button>
+        </div>
+      </div>
+    `;
+    main.appendChild(addSection);
+
+    document.getElementById("toggleAddSection").addEventListener("click",()=>{
+      document.getElementById("addSectionForm").classList.toggle("show");
+    });
+    document.getElementById("cancelAddSection").addEventListener("click",()=>{
+      document.getElementById("addSectionForm").classList.remove("show");
+    });
+    document.getElementById("confirmAddSection").addEventListener("click", async ()=>{
+  const nameInput=document.getElementById("newSectionName");
+  const assigneeInput=document.getElementById("newSectionAssignee");
+  const name=nameInput.value.trim();
+  if(!name){ showToast("場所の名前を入力してください"); return; }
+  pushUndo(currentTab);
+  const newSection = { id:genId("s"), name, assignee:assigneeInput.value.trim(), tasks:[] };
+  await transactStructure(currentTab, (sections)=>{
+    sections.push(newSection);
+    return sections;
+  });
+  openSections[currentTab+":"+newSection.id]=true;
+  render();
+  showToast("場所を追加しました");
+});
+  }
+
+  // bindings
+    main.querySelectorAll("[data-id]").forEach(el=>{
+  el.addEventListener("click", async ()=>{
+    if(isHistoryMode()) return;
+    if(el.getAttribute("data-day-inactive")==="1"){
+      showToast("本日は対象外の曜日のタスクです");
+      return;
+    }
+    const id=el.getAttribute("data-id");
+    pushUndo(currentTab);
+    await transactChecks(currentTab, (checks)=>{
+      checks[id] = !checks[id];
+      return checks;
+    });
+    checkedMap = todayChecked;
+    render();
+  });
+});
+
+  main.querySelectorAll("[data-edit-assignee]").forEach(el=>{
+  el.addEventListener("click", async (e)=>{
+    e.stopPropagation();
+    if(isHistoryMode()) return;
+    const sId=el.getAttribute("data-edit-assignee");
+    const sec=structures[currentTab].find(s=>s.id===sId);
+    const val = prompt(`「${sec.name}」の担当者名を入力してください(空にすると無記名になります)`, sec.assignee||"");
+    if(val===null) return;
+    pushUndo(currentTab);
+    const newAssignee = val.trim();
+    await transactStructure(currentTab, (sections)=>{
+      const s = sections.find(s=>s.id===sId);
+      if(s) s.assignee = newAssignee;
+      return sections;
+    });
+    render();
+  });
+});
+  main.querySelectorAll("[data-edit-alert]").forEach(el=>{
+  el.addEventListener("click", async (e)=>{
+    e.stopPropagation();
+    if(isHistoryMode()) return;
+    const sId=el.getAttribute("data-edit-alert");
+    const sec=structures[currentTab].find(s=>s.id===sId);
+    const val = prompt(`「${sec.name}」の注意事項を入力してください(病気の発生など。空にすると消えます)`, sec.alert||"");
+    if(val===null) return;
+    pushUndo(currentTab);
+    const newAlert = val.trim();
+    await transactStructure(currentTab, (sections)=>{
+      const s = sections.find(s=>s.id===sId);
+      if(s) s.alert = newAlert;
+      return sections;
+    });
+    render();
+    showToast(newAlert ? "注意事項を更新しました" : "注意事項を削除しました");
+  });
+});
+    main.querySelectorAll("[data-edit-task]").forEach(el=>{
+  el.addEventListener("click", async (e)=>{
+    e.stopPropagation();
+    if(isHistoryMode()) return;
+    const [sId,tId]=el.getAttribute("data-edit-task").split("|");
+    const sec=structures[currentTab].find(s=>s.id===sId);
+    const task=sec.tasks.find(t=>t.id===tId);
+    const originalText = task.text;
+    const originalAssignee = task.assignee||"";
+    const newText = prompt("タスクの内容を編集してください", task.text||"");
+    if(newText===null) return;
+    if(!newText.trim()){ showToast("タスクの内容を入力してください"); return; }
+    const newAssigneeVal = prompt("担当者名を編集してください(空にすると無記名になります)", task.assignee||"");
+    if(newAssigneeVal===null) return;
+    const finalText = newText.trim();
+    const finalAssignee = newAssigneeVal.trim();
+
+    const applyEditToCurrent = async ()=>{
+      pushUndo(currentTab);
+      await transactStructure(currentTab, (sections)=>{
+        const s = sections.find(s=>s.id===sId);
+        const t = s ? s.tasks.find(t=>t.id===tId) : null;
+        if(t){ t.text = finalText; t.assignee = finalAssignee; }
+        return sections;
+      });
+    };
+
+    // 他タブに同じ場所名・同じ(編集前の)内容+担当者のタスクがあれば、連動編集の候補として確認する
+    let matches=[];
+    if(sec && task && firebaseReady){
+      for(const t of otherTabsOf(currentTab)){
+        try{
+          const snap = await withDbTimeout(structureRef(t).get(), "crossTabEdit-get-timeout");
+          const sections = (snap.exists && snap.data() && snap.data().sections) ? snap.data().sections : [];
+          const s2 = sections.find(s=>s.name===sec.name);
+          if(s2 && s2.tasks.some(tk=>isSameTask(tk, {text:originalText, assignee:originalAssignee}))) matches.push(t);
+        }catch(err){ /* 確認できなければ現在のタブのみ更新する */ }
+      }
+    }
+
+    if(matches.length===0){
+      await applyEditToCurrent();
+      render();
+      showToast("タスクを更新しました");
+      return;
+    }
+
+    openTaskSyncModal(matches, async (selectedTabs)=>{
+      await applyEditToCurrent();
+      for(const t of selectedTabs){
+        await transactStructure(t, (sections)=>{
+          const s2 = sections.find(s=>s.name===sec.name);
+          const t2 = s2 ? s2.tasks.find(tk=>isSameTask(tk, {text:originalText, assignee:originalAssignee})) : null;
+          if(t2){ t2.text = finalText; t2.assignee = finalAssignee; }
+          return sections;
+        });
+      }
+      render();
+      showToast(selectedTabs.length ? `更新しました（${selectedTabs.map(t=>TAB_LABELS[t]).join("・")}にも反映）` : "タスクを更新しました");
+    }, {
+      title: "他の時間帯にも同じ変更を反映しますか？",
+      sub: "同じ内容のタスクが見つかりました。合わせて変更するものを選んでください",
+      confirmLabel: "反映する",
+      checkboxSuffix: "にも反映する"
+    });
+  });
+});
+
+  main.querySelectorAll("[data-move-section]").forEach(el=>{
+  el.addEventListener("click", async (e)=>{
+    e.stopPropagation();
+    if(isHistoryMode()) return;
+    const [sId,dir]=el.getAttribute("data-move-section").split("|");
+    pushUndo(currentTab);
+    await transactStructure(currentTab, (sections)=>{
+      const i=sections.findIndex(s=>s.id===sId);
+      const j = dir==="up" ? i-1 : i+1;
+      if(i<0 || j<0 || j>=sections.length) return sections;
+      [sections[i],sections[j]]=[sections[j],sections[i]];
+      return sections;
+    });
+    render();
+  });
+});
+    main.querySelectorAll("[data-toggle-section]").forEach(el=>{
+  el.addEventListener("click", async (e)=>{
+    e.stopPropagation();
+    if(isHistoryMode()) return;
+    const sId=el.getAttribute("data-toggle-section");
+    const sec=structures[currentTab].find(s=>s.id===sId);
+    const taskIds = sec.tasks.filter(t=>isTaskActiveToday(t.text)).map(t=>t.id);
+    if(taskIds.length===0) return;
+    pushUndo(currentTab);
+    await transactChecks(currentTab, (checks)=>{
+      const allDone = taskIds.every(tId=>checks[tId]);
+      taskIds.forEach(tId=>{ checks[tId] = !allDone; });
+      return checks;
+    });
+    checkedMap = todayChecked;
+    render();
+  });
+});
+  main.querySelectorAll("[data-remove-task]").forEach(el=>{
+  el.addEventListener("click", async (e)=>{
+    e.stopPropagation();
+    if(isHistoryMode()) return;
+    const [sId,tId]=el.getAttribute("data-remove-task").split("|");
+    const sourceSec = (structures[currentTab]||[]).find(s=>s.id===sId);
+    const task = sourceSec ? sourceSec.tasks.find(t=>t.id===tId) : null;
+
+    const removeFromCurrent = async ()=>{
+      pushUndo(currentTab);
+      await transactStructure(currentTab, (sections)=>{
+        const sec = sections.find(s=>s.id===sId);
+        if(sec) sec.tasks = sec.tasks.filter(t=>t.id!==tId);
+        return sections;
+      });
+      delete todayChecked[tId];
+      checkedMap = todayChecked;
+      await saveChecks(currentTab);
+    };
+
+    // 他タブに同じ場所名・同じ内容+担当者のタスクがあれば、連動削除の候補として確認する
+    let matches=[];
+    if(sourceSec && task && firebaseReady){
+      for(const t of otherTabsOf(currentTab)){
+        try{
+          const snap = await withDbTimeout(structureRef(t).get(), "crossTabDelete-get-timeout");
+          const sections = (snap.exists && snap.data() && snap.data().sections) ? snap.data().sections : [];
+          const sec = sections.find(s=>s.name===sourceSec.name);
+          if(sec && sec.tasks.some(tk=>isSameTask(tk, task))) matches.push(t);
+        }catch(err){ /* 確認できなければ通常削除のみ行う */ }
+      }
+    }
+
+    if(matches.length===0){
+      await removeFromCurrent();
+      render();
+      return;
+    }
+
+    openTaskSyncModal(matches, async (selectedTabs)=>{
+      await removeFromCurrent();
+      for(const t of selectedTabs){
+        await transactStructure(t, (sections)=>{
+          const sec = sections.find(s=>s.name===sourceSec.name);
+          if(sec) sec.tasks = sec.tasks.filter(tk=>!isSameTask(tk, task));
+          return sections;
+        });
+      }
+      render();
+      showToast(selectedTabs.length ? `削除しました（${selectedTabs.map(t=>TAB_LABELS[t]).join("・")}からも削除）` : "削除しました");
+    });
+  });
+});
+  main.querySelectorAll("[data-del-section]").forEach(el=>{
+  el.addEventListener("click", async (e)=>{
+    e.stopPropagation();
+    if(isHistoryMode()) return;
+    const sId=el.getAttribute("data-del-section");
+    const sec=structures[currentTab].find(s=>s.id===sId);
+    if(!confirm(`「${sec.name}」を削除します。よろしいですか？`)) return;
+    pushUndo(currentTab);
+    const removedTaskIds = sec.tasks.map(t=>t.id);
+    await transactStructure(currentTab, (sections)=>{
+      return sections.filter(s=>s.id!==sId);
+    });
+    removedTaskIds.forEach(tId=>delete todayChecked[tId]);
+    checkedMap = todayChecked;
+    await saveChecks(currentTab);
+    render();
+    showToast("場所を削除しました");
+  });
+});
+  main.querySelectorAll("[data-add-btn]").forEach(btn=>{
+  btn.addEventListener("click", async (e)=>{
+    e.stopPropagation();
+    if(isHistoryMode()) return;
+    const sId=btn.getAttribute("data-add-btn");
+    const input=main.querySelector(`[data-add-input="${sId}"]`);
+    const assigneeInput=main.querySelector(`[data-add-assignee="${sId}"]`);
+    const val=input.value.trim();
+    if(!val) return;
+    const assigneeVal = assigneeInput ? assigneeInput.value.trim() : "";
+    const sourceSec = (structures[currentTab]||[]).find(s=>s.id===sId);
+
+    const doAdd = async (targetTabs)=>{
+      pushUndo(currentTab);
+      const newTask = { id:genId("t"), text:val, assignee: assigneeVal };
+      await transactStructure(currentTab, (sections)=>{
+        const sec = sections.find(s=>s.id===sId);
+        if(sec) sec.tasks.push(newTask);
+        return sections;
+      });
+      let copied=[], skipped=[];
+      for(const targetTab of targetTabs){
+        let result="skipped";
+        await transactStructure(targetTab, (sections)=>{
+          const sec = sections.find(s=>s.name===sourceSec.name);
+          if(!sec) return sections;
+          if(sec.tasks.some(t=>isSameTask(t, newTask))){ result="dup"; return sections; }
+          sec.tasks.push({ id:genId("t"), text:val, assignee:assigneeVal });
+          result="copied";
+          return sections;
+        });
+        if(result==="copied") copied.push(TAB_LABELS[targetTab]);
+        else skipped.push(TAB_LABELS[targetTab]);
+      }
+      render();
+      let msg = "タスクを追加しました";
+      if(copied.length) msg += `（${copied.join("・")}にもコピー）`;
+      if(skipped.length) msg += `（${skipped.join("・")}は同名の場所がないかすでに同じ内容があるためスキップ）`;
+      showToast(msg);
+    };
+
+    const others = otherTabsOf(currentTab);
+    if(others.length===0){
+      await doAdd([]);
+      return;
+    }
+
+    openTaskSyncModal(others, async (selectedTabs)=>{
+      await doAdd(selectedTabs);
+    }, {
+      title: "他の時間帯にも追加しますか？",
+      sub: "追加するタスクを他の時間帯にもコピーする場合は選んでください",
+      confirmLabel: "追加する",
+      checkboxSuffix: "にも追加する"
+    });
+  });
+});
+  main.querySelectorAll("[data-add-input], [data-add-assignee]").forEach(input=>{
+    input.addEventListener("keydown", (e)=>{
+      if(e.key==="Enter"){
+        const sId = input.getAttribute("data-add-input") || input.getAttribute("data-add-assignee");
+        main.querySelector(`[data-add-btn="${sId}"]`).click();
+      }
+    });
+  });
+
+  updateProgress(totalTasks,doneTasks);
+}
+
+function updateProgress(total,done){
+  document.getElementById("progressBig").textContent=`${done} / ${total}`;
+  const pct = total>0 ? Math.round(done/total*100) : 0;
+  document.getElementById("barFill").style.width=pct+"%";
+  document.getElementById("progressSmall").textContent = "完了";
+  const completeMsg = document.getElementById("progressCompleteMsg");
+  if(total > 0 && done === total){
+    completeMsg.textContent = "管理を完了しました。おつかれさまでした🍵";
+  }else{
+    completeMsg.textContent = "";
+  }
+}
+
+/* ---------- backups ---------- */
+async function createBackup(silent){
+  if(isHistoryMode()) return;
+  if(!firebaseReady){ if(!silent) showConfigWarningOnce(); return; }
+  try{
+    await withDbTimeout(backupsCol(currentTab).add({
+      tab: currentTab,
+      structure: structures[currentTab],
+      checks: todayChecked,
+      day: todayStr,
+      auto: !!silent,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    }), "backup-add-timeout");
+    if(!silent) showToast("保存しました");
+    await pruneBackups();
+  }catch(e){
+    if(!silent) connErrFail("バックアップの保存", e);
+  }
+}
+async function pruneBackups(){
+  try{
+    const q = await withDbTimeout(backupsCol(currentTab).orderBy("createdAt","desc").get(), "pruneBackups-get-timeout");
+    const docs = q.docs;
+    if(docs.length>BACKUP_LIMIT){
+      const excess = docs.slice(BACKUP_LIMIT);
+      for(const d of excess){ await withDbTimeout(backupsCol(currentTab).doc(d.id).delete(), "pruneBackups-delete-timeout"); }
+    }
+  }catch(e){ /* 一覧整理の失敗は致命的ではないため無視 */ }
+}
+
+/* ---------- 自動バックアップ(変更のたびに少し間をおいて保存) ---------- */
+const AUTO_BACKUP_DEBOUNCE_MS = 4000;
+const autoBackupTimers = {};
+function scheduleAutoBackup(tab){
+  clearTimeout(autoBackupTimers[tab]);
+  autoBackupTimers[tab] = setTimeout(()=>{
+    if(tab===currentTab) createBackup(true);
+  }, AUTO_BACKUP_DEBOUNCE_MS);
+}
+const BACKUP_PAGE_SIZE = 20;
+let restoreBackupDocs = [];
+let restoreBackupPage = 0;
+async function openRestoreModal(){
+  if(isHistoryMode()) return;
+  const listEl=document.getElementById("backupList");
+  listEl.innerHTML=`<div class="empty-note">読み込み中…</div>`;
+  document.getElementById("restoreModal").classList.add("show");
+  document.getElementById("restoreSub").textContent = INITIAL_DATA[currentTab].label + "の保存済みバックアップ一覧";
+  if(!firebaseReady){
+    listEl.innerHTML=`<div class="empty-note">Firebase未設定のためバックアップを利用できません</div>`;
+    return;
+  }
+  try{
+    const q = await withDbTimeout(backupsCol(currentTab).orderBy("createdAt","desc").limit(BACKUP_LIMIT).get(), "restoreList-get-timeout");
+    restoreBackupDocs = q.docs;
+    restoreBackupPage = 0;
+    if(restoreBackupDocs.length===0){
+      listEl.innerHTML=`<div class="empty-note">まだバックアップがありません</div>`;
+      return;
+    }
+    renderBackupListPage();
+  }catch(e){
+    listEl.innerHTML=`<div class="empty-note">読み込みに失敗しました<br><small style="word-break:break-all;">${escapeHtml(e && e.message ? e.message : String(e))}</small></div>`;
+  }
+}
+function renderBackupListPage(){
+  const listEl=document.getElementById("backupList");
+  const totalPages = Math.max(1, Math.ceil(restoreBackupDocs.length / BACKUP_PAGE_SIZE));
+  restoreBackupPage = Math.min(Math.max(restoreBackupPage,0), totalPages-1);
+  const start = restoreBackupPage * BACKUP_PAGE_SIZE;
+  const pageDocs = restoreBackupDocs.slice(start, start + BACKUP_PAGE_SIZE);
+  listEl.innerHTML="";
+  pageDocs.forEach(doc=>{
+    const data = doc.data();
+    const ts = data.createdAt && data.createdAt.toDate ? data.createdAt.toDate() : new Date();
+    const label = `${ts.getMonth()+1}/${ts.getDate()} ${pad(ts.getHours())}:${pad(ts.getMinutes())} ${data.auto ? "(自動保存)" : "(手動保存)"}`;
+    const item=document.createElement("div");
+    item.className="backup-item";
+    item.innerHTML=`<div class="info">${label}<small>タップして内容を確認できます</small></div><button data-preview-key="${doc.id}">プレビュー</button>`;
+    listEl.appendChild(item);
+  });
+  listEl.querySelectorAll("[data-preview-key]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const key=btn.getAttribute("data-preview-key");
+      listEl.innerHTML=`<div class="empty-note">読み込み中…</div>`;
+      try{
+        const doc = await withDbTimeout(backupsCol(currentTab).doc(key).get(), "backupPreview-get-timeout");
+        renderBackupPreview(doc.data());
+      }catch(e){
+        listEl.innerHTML=`<div class="empty-note">読み込みに失敗しました（${escapeHtml(errDetail(e))}）</div>`;
+      }
+    });
+  });
+  if(totalPages>1){
+    const pager=document.createElement("div");
+    pager.className="backup-pager";
+    pager.innerHTML=`
+      <button id="backupPagerPrev" ${restoreBackupPage===0?"disabled":""}>← 前へ</button>
+      <span class="backup-pager-label">${restoreBackupPage+1} / ${totalPages}</span>
+      <button id="backupPagerNext" ${restoreBackupPage>=totalPages-1?"disabled":""}>次へ →</button>
+    `;
+    listEl.appendChild(pager);
+    const prevBtn = pager.querySelector("#backupPagerPrev");
+    const nextBtn = pager.querySelector("#backupPagerNext");
+    if(prevBtn) prevBtn.addEventListener("click", ()=>{ restoreBackupPage--; renderBackupListPage(); });
+    if(nextBtn) nextBtn.addEventListener("click", ()=>{ restoreBackupPage++; renderBackupListPage(); });
+  }
+}
+
+function renderBackupPreview(payload){
+  const listEl=document.getElementById("backupList");
+  const sections = payload.structure || [];
+  const totalTasks = sections.reduce((sum,s)=>sum+s.tasks.length,0);
+  const diffs = diffStructures(structures[currentTab] || [], sections);
+
+  const sectionBlockHtml = diffs.map(d=>{
+    const wrapClass = d.status==="added" ? "diff-added" : d.status==="removed" ? "diff-removed" : d.status==="changed" ? "diff-changed" : "";
+    const nameLine = `${escapeHtml(d.name)}${d.assignee?` <span style="font-weight:500; font-size:11.5px;">(担当: ${escapeHtml(d.assignee)})</span>`:``}`;
+    const taskLines = d.taskDiffs.length ? d.taskDiffs.map(td=>{
+      const tClass = td.status==="added" ? "diff-added" : td.status==="removed" ? "diff-removed" : td.status==="changed" ? "diff-changed" : "";
+      return `<div class="${tClass}" style="font-size:12px; ${tClass?"":"color:var(--ink-soft);"}">・${escapeHtml(td.text)}${td.assignee?`(担当:${escapeHtml(td.assignee)})`:""}</div>`;
+    }).join("") : `<div style="font-size:12px; color:var(--ink-soft);">(タスクなし)</div>`;
+    return `<div class="${wrapClass}" style="margin-bottom:8px; ${wrapClass?"":"padding:4px 0;"}">
+      <div style="font-weight:700; color:var(--soil-800);">${nameLine}</div>
+      <div style="margin-top:4px;">${taskLines}</div>
+    </div>`;
+  }).join("");
+
+  listEl.innerHTML = `
+    <div class="diff-legend">
+      <span><span class="diff-dot" style="background:#4caf50;"></span>追加箇所</span>
+      <span><span class="diff-dot" style="background:#e0b400;"></span>変更箇所</span>
+      <span><span class="diff-dot" style="background:#c1613f;"></span>削除箇所</span>
+    </div>
+    <div class="empty-note" style="text-align:left; padding:0 2px 8px;">場所数: ${sections.length} / タスク数: ${totalTasks}</div>
+    <div style="max-height:40vh; overflow-y:auto; margin-bottom:12px;">${sectionBlockHtml || `<div class="empty-note">中身が空です</div>`}</div>
+    <div style="display:flex; gap:8px;">
+      <button id="backupPreviewBack" style="flex:1; border:none; background:#efece2; color:var(--ink-soft); border-radius:10px; padding:11px; font-weight:600; cursor:pointer;">一覧に戻る</button>
+      <button id="backupPreviewRestore" style="flex:1; border:none; background:var(--leaf-600); color:#fff; border-radius:10px; padding:11px; font-weight:600; cursor:pointer;">この内容で復元する</button>
+    </div>
+  `;
+  document.getElementById("backupPreviewBack").addEventListener("click", ()=>renderBackupListPage());
+  document.getElementById("backupPreviewRestore").addEventListener("click", async ()=>{
+    if(!confirm("このバックアップの内容で復元します。今の内容は上書きされます。よろしいですか？")) return;
+    try{
+      pushUndo(currentTab);
+      structures[currentTab]=payload.structure;
+      todayChecked = (payload.day===todayStr) ? payload.checks : {};
+      checkedMap = todayChecked;
+      await saveStructure(currentTab);
+      await saveChecks(currentTab);
+      render();
+      document.getElementById("restoreModal").classList.remove("show");
+      showToast("復元しました");
+    }catch(e){
+      connErrFail("栽培管理データの復元", e);
+    }
+  });
+}
+function openDateRefModal(){
+  const listEl = document.getElementById("dateRefList");
+  const days = getLastNDays(HISTORY_DAYS).filter(isDutyDate);
+  if(days.length===0){
+    listEl.innerHTML = `<div class="empty-note">表示できる過去の記録がありません</div>`;
+  }else{
+    listEl.innerHTML = "";
+    days.forEach(day=>{
+      const { md, dow } = shortDowLabel(day);
+      const stats = dateStats[day];
+      const item=document.createElement("div");
+      item.className="backup-item";
+      const statusText = stats ? `完了 ${stats.done}/${stats.total}` : "記録なし";
+      item.innerHTML = `<div class="info">${md}(${dow})${day===todayStr?" ・今日":""}<small>${statusText}</small></div><button data-ref-date="${day}">表示</button>`;
+      listEl.appendChild(item);
+    });
+    listEl.querySelectorAll("[data-ref-date]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        selectDate(btn.getAttribute("data-ref-date"));
+        document.getElementById("dateRefModal").classList.remove("show");
+      });
+    });
+  }
+  document.getElementById("dateRefModal").classList.add("show");
+}
+
+/* ---------- events ---------- */
+document.getElementById("tabNav").addEventListener("click", (e)=>{
+  const btn=e.target.closest("button[data-tab]");
+  if(!btn) return;
+  const nextTab = btn.getAttribute("data-tab");
+  if(nextTab===currentTab) return;
+  document.querySelectorAll("#tabNav button").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");
+  currentTab = nextTab;
+
+  // 先にボタンのactive表示を1フレーム描画してから重い処理へ進む。
+  // WebKitで「押したのに反応が遅い」ように見えるのを避ける。
+  requestAnimationFrame(()=>{ loadTab(nextTab); });
+});
+document.getElementById("undoBtn").addEventListener("click", ()=>{
+  if(!confirm("直前の操作を取り消します。よろしいですか？")) return;
+  undo();
+});
+document.getElementById("backupBtn").addEventListener("click", ()=>createBackup(false));
+document.getElementById("restoreBtn").addEventListener("click", ()=>{
+  openRestorePasscodeModal(()=> openRestoreModal());
+});
+document.getElementById("dateRefBtn").addEventListener("click", ()=>{
+  openDateRefModal();
+});
+document.getElementById("closeDateRefModal").addEventListener("click", ()=>{
+  document.getElementById("dateRefModal").classList.remove("show");
+});
+document.getElementById("editModeBtn").addEventListener("click", ()=>{
+  editMode = !editMode;
+  render();
+});
+
+document.getElementById("closeModal").addEventListener("click", ()=>{
+  document.getElementById("restoreModal").classList.remove("show");
+});
+
+/* =========================================================================
+   当番管理モジュール (希望表 / カレンダー / データ)
+   ========================================================================= */
+
+/* ---- 権限まわり(簡易パスワード。必要に応じて下の値を書き換えてください) ---- */
+const ADMIN_PASSWORD  = "obungu_no_831";   // 初期パスワード（変更後はFirestore上の値が優先されます）
+let adminPasswordCurrent = ADMIN_PASSWORD;
+function adminAuthRef(){ return db.collection("duty_settings").doc("adminAuth"); }
+async function loadAdminPassword(){
+  try{
+    const snap = await withDbTimeout(adminAuthRef().get(), "adminAuth-get-timeout");
+    if(snap.exists && typeof snap.data().password==="string" && snap.data().password){
+      adminPasswordCurrent = snap.data().password;
+    }
+  }catch(e){ /* オフライン時などは既定値のまま */ }
+}
+async function changeAdminPassword(){
+  const cur = prompt("現在の管理者パスワードを入力してください");
+  if(cur===null) return;
+  if(cur!==adminPasswordCurrent){ showToast("現在のパスワードが違います"); return; }
+  const next1 = prompt("新しいパスワードを入力してください");
+  if(next1===null) return;
+  if(!next1.trim()){ showToast("新しいパスワードを入力してください"); return; }
+  const next2 = prompt("確認のため、新しいパスワードをもう一度入力してください");
+  if(next2===null) return;
+  if(next1!==next2){ showToast("新しいパスワードが一致しません"); return; }
+  try{
+    await adminAuthRef().set({ password: next1 });
+    adminPasswordCurrent = next1;
+    showToast("パスワードを変更しました");
+  }catch(e){
+    toastFail("管理者パスワードの変更", e);
+  }
+}
+let isAdmin  = sessionStorage.getItem("dutyIsAdmin")==="true";
+let myName   = localStorage.getItem("dutyMyName") || "";
+function unlockAdmin(){
+  if(isAdmin) return true;
+  const pw = prompt("管理者パスワードを入力してください");
+  if(pw===null) return false;
+  if(pw===adminPasswordCurrent){
+    isAdmin=true; sessionStorage.setItem("dutyIsAdmin","true");
+    showToast("管理者モードを解除しました");
+    renderDutyPanel();
+    return true;
+  }
+  showToast("パスワードが違います");
+  return false;
+}
+function lockAdmin(){ isAdmin=false; sessionStorage.removeItem("dutyIsAdmin"); showToast("管理者モードをロックしました"); renderDutyPanel(); }
+
+/* ---- 復元専用パスコード(管理者パスワードとは独立。圃場管理の「復元」ボタン用) ---- */
+const RESTORE_PASSCODE_DEFAULT = "1234"; // 初期パスコード（変更後はFirestore上の値が優先されます）
+let restorePasscodeCurrent = RESTORE_PASSCODE_DEFAULT;
+function restoreAuthRef(){ return db.collection("duty_settings").doc("restoreAuth"); }
+async function loadRestorePasscode(){
+  try{
+    const snap = await withDbTimeout(restoreAuthRef().get(), "restoreAuth-get-timeout");
+    if(snap.exists && typeof snap.data().passcode==="string" && /^\d{4}$/.test(snap.data().passcode)){
+      restorePasscodeCurrent = snap.data().passcode;
+    }
+  }catch(e){ /* オフライン時などは既定値のまま */ }
+}
+async function setRestorePasscode(newCode){
+  try{
+    await restoreAuthRef().set({ passcode: newCode });
+    restorePasscodeCurrent = newCode;
+    return true;
+  }catch(e){
+    toastFail("復元用パスコードの変更", e);
+    return false;
+  }
+}
+
+let restorePasscodeInput = "";
+let restorePasscodeOnSuccess = null;
+let restorePasscodeMode = "unlock"; // "unlock" | "setNew" | "confirmNew"
+let restorePasscodeFirstNew = "";
+
+function renderRestorePasscodeDots(){
+  document.querySelectorAll("#restorePasscodeDots .dot").forEach((d,i)=>{
+    d.classList.toggle("filled", i < restorePasscodeInput.length);
+  });
+}
+function shakeRestorePasscodeDots(msg){
+  const wrap = document.getElementById("restorePasscodeDots");
+  wrap.classList.remove("shake"); void wrap.offsetWidth; wrap.classList.add("shake");
+  document.getElementById("restorePasscodeError").textContent = msg;
+  restorePasscodeInput = "";
+  renderRestorePasscodeDots();
+}
+function openRestorePasscodeModal(onSuccess){
+  restorePasscodeInput = "";
+  restorePasscodeMode = "unlock";
+  restorePasscodeOnSuccess = onSuccess;
+  document.getElementById("restorePasscodeError").textContent = "";
+  document.getElementById("restorePasscodeSub").textContent = "復元するには4桁のパスコードを入力してください";
+  renderRestorePasscodeDots();
+  document.getElementById("restorePasscodeModal").classList.add("show");
+}
+function startChangeRestorePasscode(){
+  restorePasscodeInput = "";
+  restorePasscodeMode = "setNew";
+  restorePasscodeFirstNew = "";
+  restorePasscodeOnSuccess = null;
+  document.getElementById("restorePasscodeError").textContent = "";
+  document.getElementById("restorePasscodeSub").textContent = "新しい4桁のパスコードを入力してください";
+  renderRestorePasscodeDots();
+  document.getElementById("restorePasscodeModal").classList.add("show");
+}
+document.getElementById("restorePasscodeKeypad").addEventListener("click", async (e)=>{
+  const btn = e.target.closest("button[data-key]");
+  if(!btn) return;
+  const key = btn.getAttribute("data-key");
+  if(key==="back"){
+    restorePasscodeInput = restorePasscodeInput.slice(0,-1);
+    renderRestorePasscodeDots();
+    return;
+  }
+  if(restorePasscodeInput.length>=4) return;
+  restorePasscodeInput += key;
+  renderRestorePasscodeDots();
+  if(restorePasscodeInput.length<4) return;
+
+  if(restorePasscodeMode==="unlock"){
+    if(restorePasscodeInput===restorePasscodeCurrent){
+      document.getElementById("restorePasscodeModal").classList.remove("show");
+      const cb = restorePasscodeOnSuccess;
+      restorePasscodeOnSuccess = null;
+      if(cb) cb();
+    }else{
+      shakeRestorePasscodeDots("パスコードが違います");
+    }
+  }else if(restorePasscodeMode==="setNew"){
+    restorePasscodeFirstNew = restorePasscodeInput;
+    restorePasscodeInput = "";
+    restorePasscodeMode = "confirmNew";
+    document.getElementById("restorePasscodeError").textContent = "";
+    document.getElementById("restorePasscodeSub").textContent = "確認のため、もう一度入力してください";
+    renderRestorePasscodeDots();
+  }else if(restorePasscodeMode==="confirmNew"){
+    if(restorePasscodeInput===restorePasscodeFirstNew){
+      const ok = await setRestorePasscode(restorePasscodeInput);
+      document.getElementById("restorePasscodeModal").classList.remove("show");
+      if(ok) showToast("パスコードを変更しました");
+    }else{
+      restorePasscodeMode = "setNew";
+      restorePasscodeFirstNew = "";
+      document.getElementById("restorePasscodeSub").textContent = "新しい4桁のパスコードを入力してください";
+      shakeRestorePasscodeDots("パスコードが一致しません。もう一度入力してください");
+    }
+  }
+});
+document.getElementById("closeRestorePasscodeModal").addEventListener("click", ()=>{
+  document.getElementById("restorePasscodeModal").classList.remove("show");
+  restorePasscodeOnSuccess = null;
+});
+
+/* ---- 名簿(ロースター) ---- */
+const ROSTER_DEFAULT = ["木下","清水","杉山","鈴木","諏訪田","瀬川","中野翔","伊藤","中野真","辻","増田","藤井","河野","新宮","杉本","滝口","中村","橋本","和田"];
+let roster = ROSTER_DEFAULT.slice();
+function rosterRef(){ return db.collection("duty_settings").doc("roster"); }
+async function loadRoster(){
+  try{
+    const snap = await withDbTimeout(rosterRef().get(), "roster-get-timeout");
+    if(snap.exists && Array.isArray(snap.data().names) && snap.data().names.length){
+      roster = snap.data().names;
+    }else{
+      await withDbTimeout(rosterRef().set({ names: roster }), "roster-set-timeout");
+    }
+  }catch(e){ /* オフライン時などはデフォルトのまま */ }
+}
+async function saveRoster(){
+  try{ await rosterRef().set({ names: roster }); }catch(e){ toastFail("名簿の保存", e); }
+}
+function openRosterModal(){
+  renderRosterList();
   document.getElementById("rosterModal").classList.add("show");
 }
 function renderRosterList(){
