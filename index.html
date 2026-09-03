@@ -113,7 +113,7 @@
   margin:0;
   white-space:nowrap;
 }
-  .brand-sub-group{display:flex;flex-direction:column;gap:0;margin-top:3px;margin-bottom:5px;}
+  .brand-sub-group{display:flex;flex-direction:column;gap:0;margin-top:1px;margin-bottom:3px;}
   .date-pill{
     font-size:10.5px; color:#e7f0e6; background:rgba(255,255,255,.08);
     padding:3px 8px; border-radius:999px; white-space:nowrap;
@@ -737,7 +737,6 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
       </span>
       <div class="brand-sub-group">
         <div class="brand-sub">栽培・当番管理システム</div>
-        <div class="brand-sub">Agricultural Task and Labor Administration System</div>
       </div>
     </div>
     <div class="brand-controls">
@@ -885,6 +884,17 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
     </div>
     <div id="rosterList"></div>
     <button class="modal-close" id="closeRosterModal">閉じる</button>
+  </div>
+</div>
+
+
+<div class="modal-overlay" id="periodModal">
+  <div class="modal-sheet">
+    <div class="modal-title">集計期間を編集</div>
+    <div class="modal-sub">期間の追加・削除ができます。期間を削除しても希望表や当番カレンダーの実データは削除されません。</div>
+    <button id="periodAddBtn" style="width:100%; border:none; background:var(--leaf-600); color:#fff; border-radius:10px; padding:11px; font-weight:700; cursor:pointer; margin-bottom:12px;">＋ 新しい期間を追加</button>
+    <div id="periodList"></div>
+    <button class="modal-close" id="closePeriodModal">閉じる</button>
   </div>
 </div>
 
@@ -2810,6 +2820,104 @@ document.getElementById("rosterAddBtn").addEventListener("click", async ()=>{
 document.getElementById("closeRosterModal").addEventListener("click", ()=>{
   document.getElementById("rosterModal").classList.remove("show");
 });
+document.getElementById("periodAddBtn").addEventListener("click", async ()=>{
+  const startVal = prompt("開始年月を「年-月」で入力してください（例: 2026-4）");
+  if(startVal===null) return;
+  const endVal = prompt("終了年月を「年-月」で入力してください（例: 2027-3）");
+  if(endVal===null) return;
+
+  const sp = startVal.trim().split("-").map(v=>parseInt(v,10));
+  const ep = endVal.trim().split("-").map(v=>parseInt(v,10));
+  const sy=sp[0], sm=sp[1], ey=ep[0], em=ep[1];
+
+  if(isNaN(sy)||isNaN(sm)||sm<1||sm>12||isNaN(ey)||isNaN(em)||em<1||em>12){
+    showToast("「年-月」の形式で入力してください");
+    return;
+  }
+  if(ey*12+(em-1) < sy*12+(sm-1)){
+    showToast("終了年月は開始年月以降にしてください");
+    return;
+  }
+
+  const newPeriod = { id:genId("fp"), startYear:sy, startMonth:sm, endYear:ey, endMonth:em };
+  if(!confirm(`「${periodLabelFor(newPeriod)}」として追加します。よろしいですか？`)) return;
+
+  fiscalPresets.push(newPeriod);
+  selectedPeriodId = newPeriod.id;
+  await saveFiscalPresets();
+  renderPeriodList();
+  renderDutyPanel();
+  showToast("集計期間を追加しました");
+});
+document.getElementById("closePeriodModal").addEventListener("click", ()=>{
+  document.getElementById("periodModal").classList.remove("show");
+});
+
+
+/* ---- データページ集計期間 ---- */
+let fiscalPresets = []; // [{id,startYear,startMonth,endYear,endMonth}]
+let selectedPeriodId = null;
+
+function fiscalPresetsRef(){ return db.collection("duty_settings").doc("fiscalPresets"); }
+
+function periodLabelFor(p){
+  return `${p.startYear}年${p.startMonth}月〜${p.endYear}年${p.endMonth}月`;
+}
+function dateInPeriod(dateStr, p){
+  const d = new Date(dateStr+"T00:00:00");
+  const y = d.getFullYear(), m = d.getMonth()+1;
+  const dateAbs = y*12+(m-1);
+  const startAbs = p.startYear*12+(p.startMonth-1);
+  const endAbs = p.endYear*12+(p.endMonth-1);
+  return dateAbs>=startAbs && dateAbs<=endAbs;
+}
+async function loadFiscalPresets(){
+  try{
+    const snap = await withDbTimeout(fiscalPresetsRef().get(), "fiscalPresets-get-timeout");
+    fiscalPresets = (snap.exists && Array.isArray(snap.data().list)) ? snap.data().list : [];
+    if(selectedPeriodId && !fiscalPresets.some(p=>p.id===selectedPeriodId)){
+      selectedPeriodId = fiscalPresets[0] ? fiscalPresets[0].id : null;
+    }
+    if(!selectedPeriodId && fiscalPresets[0]) selectedPeriodId = fiscalPresets[0].id;
+  }catch(e){
+    fiscalPresets = fiscalPresets || [];
+  }
+}
+async function saveFiscalPresets(){
+  try{
+    await withDbTimeout(fiscalPresetsRef().set({list:fiscalPresets}), "fiscalPresets-set-timeout");
+  }catch(e){
+    toastFail("集計期間の保存", e);
+  }
+}
+function openPeriodModal(){
+  renderPeriodList();
+  document.getElementById("periodModal").classList.add("show");
+}
+function renderPeriodList(){
+  const listEl = document.getElementById("periodList");
+  listEl.innerHTML = fiscalPresets.map(p=>`
+    <div class="backup-item">
+      <div class="info">${periodLabelFor(p)}<small>削除しても希望表・カレンダーの実データは残ります</small></div>
+      <button data-period-del="${p.id}">削除</button>
+    </div>
+  `).join("") || `<div class="empty-note">まだ期間がありません</div>`;
+
+  listEl.querySelectorAll("[data-period-del]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const id = btn.getAttribute("data-period-del");
+      const p = fiscalPresets.find(x=>x.id===id);
+      if(!p) return;
+      if(!confirm(`「${periodLabelFor(p)}」を集計期間の一覧から削除します。希望表・カレンダーの実データは削除されません。よろしいですか？`)) return;
+      fiscalPresets = fiscalPresets.filter(x=>x.id!==id);
+      if(selectedPeriodId===id) selectedPeriodId = fiscalPresets[0] ? fiscalPresets[0].id : null;
+      await saveFiscalPresets();
+      renderPeriodList();
+      renderDutyPanel();
+      showToast("集計期間を削除しました");
+    });
+  });
+}
 
 /* ---- 当番管理(名簿・特別な日)の 元に戻す / バックアップ / 復元 ---- */
 let dutyUndoStack = [];
@@ -2855,6 +2963,7 @@ async function createDutyBackup(silent){
     await dutyBackupsCol().add({
       roster: roster.slice(),
       specialDates: JSON.parse(JSON.stringify(specialDates)),
+      fiscalPresets: JSON.parse(JSON.stringify(fiscalPresets)),
       auto: !!silent,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
@@ -2911,18 +3020,23 @@ function renderDutyBackupListPage(){
     const label = `${ts.getMonth()+1}/${ts.getDate()} ${pad(ts.getHours())}:${pad(ts.getMinutes())} ${data.auto?"(自動保存)":"(手動保存)"}`;
     const item = document.createElement("div");
     item.className = "backup-item";
-    item.innerHTML = `<div class="info">${label}<small>復元すると名簿・特例日が入れ替わります</small></div><button data-duty-restore="${doc.id}">復元</button>`;
+    item.innerHTML = `<div class="info">${label}<small>復元すると名簿・特例日・集計期間設定が入れ替わります</small></div><button data-duty-restore="${doc.id}">復元</button>`;
     listEl.appendChild(item);
   });
   listEl.querySelectorAll("[data-duty-restore]").forEach(btn=>{
     btn.addEventListener("click", async ()=>{
-      if(!confirm("このバックアップの内容で復元します。今の名簿・特例日は上書きされます。よろしいですか？")) return;
+      if(!confirm("このバックアップの内容で復元します。今の名簿・特例日・集計期間設定は上書きされます。よろしいですか？")) return;
       try{
         const snap = await dutyBackupsCol().doc(btn.getAttribute("data-duty-restore")).get();
         const data = snap.data();
         pushDutyUndo();
         roster = data.roster || roster;
         await saveRoster();
+        if(Array.isArray(data.fiscalPresets)){
+          fiscalPresets = data.fiscalPresets;
+          selectedPeriodId = fiscalPresets[0] ? fiscalPresets[0].id : null;
+          await saveFiscalPresets();
+        }
         await applySpecialDatesSnapshot(data.specialDates || {});
         document.getElementById("dutyRestoreModal").classList.remove("show");
         renderDutyPanel();
@@ -3408,10 +3522,16 @@ async function renderDataPanel(el){
   el.innerHTML = `<div class="empty-note">読み込み中…</div>`;
 
   const allCal = await loadAllCalendarForCount();
+  const currentPeriodId = (selectedPeriodId && fiscalPresets.some(p=>p.id===selectedPeriodId))
+    ? selectedPeriodId
+    : (fiscalPresets[0] ? fiscalPresets[0].id : null);
+  const currentPeriod = fiscalPresets.find(p=>p.id===currentPeriodId) || null;
+
   const counts = {};
   roster.forEach(n=>{ counts[n]=0; });
 
   Object.keys(allCal).forEach(ds=>{
+    if(currentPeriod && !dateInPeriod(ds, currentPeriod)) return;
     (allCal[ds]||[]).forEach(name=>{
       counts[name] = (counts[name]||0) + 1;
     });
@@ -3439,6 +3559,14 @@ async function renderDataPanel(el){
       <button class="lock-btn" id="restorePwChangeBtn">🔒 復元パスコード変更</button>
     </div></div>` : ``}
 
+    <div class="me-bar">
+      集計期間:
+      <select id="periodSelect" style="border:1px solid var(--line); border-radius:8px; padding:5px 8px; font-size:12.5px;">
+        ${fiscalPresets.map(p=>`<option value="${p.id}" ${p.id===currentPeriodId?"selected":""}>${periodLabelFor(p)}</option>`).join("") || `<option value="">未設定</option>`}
+      </select>
+      ${isAdmin ? `<button id="editPeriodBtn" class="lock-btn">🔒 編集</button>` : ``}
+    </div>
+
     <table class="data-count-table">
       <thead><tr><th>名前</th><th>累積担当回数</th></tr></thead>
       <tbody>${rowsHtml || `<tr><td colspan="2" class="empty-note">名簿に登録がありません</td></tr>`}</tbody>
@@ -3450,28 +3578,33 @@ async function renderDataPanel(el){
   });
 
   const rosterBtnEl = document.getElementById("rosterBtn");
-  if(rosterBtnEl){
-    rosterBtnEl.addEventListener("click", ()=>{
-      if(!unlockAdmin()) return;
-      openRosterModal();
-    });
-  }
+  if(rosterBtnEl) rosterBtnEl.addEventListener("click", ()=>{
+    if(!unlockAdmin()) return;
+    openRosterModal();
+  });
 
   const pwChangeBtnEl = document.getElementById("pwChangeBtn");
-  if(pwChangeBtnEl){
-    pwChangeBtnEl.addEventListener("click", ()=>{
-      if(!unlockAdmin()) return;
-      changeAdminPassword();
-    });
-  }
+  if(pwChangeBtnEl) pwChangeBtnEl.addEventListener("click", ()=>{
+    if(!unlockAdmin()) return;
+    changeAdminPassword();
+  });
 
   const restorePwChangeBtnEl = document.getElementById("restorePwChangeBtn");
-  if(restorePwChangeBtnEl){
-    restorePwChangeBtnEl.addEventListener("click", ()=>{
-      if(!unlockAdmin()) return;
-      startChangeRestorePasscode();
-    });
-  }
+  if(restorePwChangeBtnEl) restorePwChangeBtnEl.addEventListener("click", ()=>{
+    if(!unlockAdmin()) return;
+    startChangeRestorePasscode();
+  });
+
+  document.getElementById("periodSelect").addEventListener("change", (e)=>{
+    selectedPeriodId = e.target.value || null;
+    renderDataPanel(el);
+  });
+
+  const editPeriodBtnEl = document.getElementById("editPeriodBtn");
+  if(editPeriodBtnEl) editPeriodBtnEl.addEventListener("click", ()=>{
+    if(!unlockAdmin()) return;
+    openPeriodModal();
+  });
 }
 
 /* ---- 希望表パネル(今月・来月を分けて表示) ---- */
@@ -3879,19 +4012,23 @@ async function openCalendarDayModal(ds){
   const wanterNamesHtml = wanterNames.slice().sort((a,b)=>(prio[b]?1:0)-(prio[a]?1:0))
     .map(n=> prio[n] ? `★${escapeHtml(n)}` : escapeHtml(n)).join("・");
   let infoHtml = `<div class="cal-day-info">
-  ${duty ? `<b>${escapeHtml(label)}</b><br>` : `通常日(当番は不要です)<br>`}
-  当番: ${assigned.length ? escapeHtml(assigned.join("・")) : "なし"}
-  ${calendarChanged[ds] ? `<br>🔁 変更前の担当: ${prevAssigned.length ? escapeHtml(prevAssigned.join("・")) : "なし"}` : ``}
-</div>`;
+    ${duty ? `<b>${escapeHtml(label)}</b><br>` : `通常日(当番は不要です)<br>`}
+    当番: ${wanterNames.length ? wanterNamesHtml : "なし"}
+    ${calendarChanged[ds] ? `<br>🔁 変更前の担当: ${prevAssigned.length ? escapeHtml(prevAssigned.join("・")) : "なし"}` : ``}
+  </div>`;
 
   if(isAdmin){
     bodyEl.innerHTML = infoHtml + `<div class="empty-note">読み込み中…</div>`;
     document.getElementById("calendarDayModal").classList.add("show");
-    // 保存されている全期間の累積担当回数を人ごとに集計（割り振りの参考用）
+    // 選択中の集計期間内での累積担当回数を人ごとに集計（割り振りの参考用）
     const allCal = await loadAllCalendarForCount();
+    const currentPeriod = (selectedPeriodId && fiscalPresets.some(p=>p.id===selectedPeriodId))
+      ? fiscalPresets.find(p=>p.id===selectedPeriodId)
+      : (fiscalPresets[0] || null);
     const counts = {};
     roster.forEach(n=>{ counts[n]=0; });
     Object.keys(allCal).forEach(otherDs=>{
+      if(currentPeriod && !dateInPeriod(otherDs, currentPeriod)) return;
       (allCal[otherDs]||[]).forEach(name=>{
         counts[name]=(counts[name]||0)+1;
       });
@@ -4298,6 +4435,8 @@ document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
         setupConnectionBanner();
         setLoadingStep("各種データを読み込み中…" + attemptTag);
         await Promise.all([loadRoster(), loadSpecialDates(), loadAdminPassword(), loadRestorePasscode(), loadPrefDeadline()]);
+        if(settled) return;
+        await loadFiscalPresets();
         if(settled) return;
         setLoadingStep("画面を準備中…" + attemptTag);
         await loadTab(currentTab);
