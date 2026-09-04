@@ -1848,8 +1848,50 @@ const UNDO_LIMIT = 20;
 
 let atlasRestPollTimer=null,atlasRestPollBusy=false,atlasRestPollTab=null;
 let atlasRestPollFailureCount=0;
+// 同期周期を用途別に分離する。
+// 栽培管理は複数端末でのチェック共有を優先して4秒、
+// 当番管理（希望表・カレンダー・データ）はCAESARと同じ60秒。
 const ATLAS_REST_POLL_MS=4000;
+const ATLAS_DUTY_POLL_MS=60000;
 const ATLAS_REST_BACKOFF_MS=[4000,10000,30000,60000];
+let atlasDutyPollTimer=null, atlasDutyPollBusy=false;
+
+function stopAtlasDutyPolling(){
+  if(atlasDutyPollTimer){clearTimeout(atlasDutyPollTimer);atlasDutyPollTimer=null;}
+}
+function atlasScheduleDutyPoll(delay=ATLAS_DUTY_POLL_MS){
+  stopAtlasDutyPolling();
+  atlasDutyPollTimer=setTimeout(atlasDutyPollOnce, Math.max(0,delay));
+}
+async function atlasDutyPollOnce(){
+  atlasDutyPollTimer=null;
+  const dutyVisible=document.getElementById("dutyMain")?.style.display!=="none";
+  if(!dutyVisible){ return; }
+  if(atlasDutyPollBusy || !atlasRestAuthReady || !navigator.onLine){
+    atlasScheduleDutyPoll(ATLAS_DUTY_POLL_MS);
+    return;
+  }
+  // 編集用モーダル表示中は自動再描画せず、入力を保護する。
+  if(document.querySelector(".modal-overlay.show")){
+    atlasScheduleDutyPoll(ATLAS_DUTY_POLL_MS);
+    return;
+  }
+  atlasDutyPollBusy=true;
+  try{
+    await renderDutyPanel();
+    atlasMarkSyncSuccess();
+  }catch(err){
+    setAtlasConnState(navigator.onLine?"error":"offline");
+  }finally{
+    atlasDutyPollBusy=false;
+    if(document.getElementById("dutyMain")?.style.display!=="none")
+      atlasScheduleDutyPoll(ATLAS_DUTY_POLL_MS);
+  }
+}
+function startAtlasDutyPolling(){
+  stopAtlasDutyPolling();
+  atlasScheduleDutyPoll(ATLAS_DUTY_POLL_MS);
+}
 
 function stopAtlasRestPolling(){
   if(atlasRestPollTimer){clearTimeout(atlasRestPollTimer);atlasRestPollTimer=null;}
@@ -4539,7 +4581,16 @@ document.getElementById("modeSwitch").addEventListener("click", async (e)=>{
   document.getElementById("dutyModeHeader").style.display = isDuty ? "" : "none";
   document.getElementById("main").style.display = isDuty ? "none" : "";
   document.getElementById("dutyMain").style.display = isDuty ? "" : "none";
-  if(isDuty){ await renderDutyPanel(); }
+  if(isDuty){
+    // 当番管理では栽培管理の4秒ポーリングを止め、当番管理専用60秒同期へ切替。
+    stopAtlasRestPolling();
+    await renderDutyPanel();
+    startAtlasDutyPolling();
+  }else{
+    // 栽培管理へ戻ったら当番管理の60秒同期を止め、4秒同期を即時再開。
+    stopAtlasDutyPolling();
+    startAtlasRestPolling(currentTab);
+  }
 });
 document.getElementById("dutySubNav").addEventListener("click", async (e)=>{
   const btn = e.target.closest("button[data-dsub]");
