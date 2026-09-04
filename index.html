@@ -1509,7 +1509,7 @@ async function initFirebase(){
     setLoadingStep("Firebaseに接続中…");
     firebase.initializeApp(firebaseConfig);
 
-    if(RECAPTCHA_V3_SITE_KEY && RECAPTCHA_V3_SITE_KEY !== "YOUR_RECAPTCHA_V3_SITE_KEY"){
+    if(RECAPTCHA_ENTERPRISE_SITE_KEY && RECAPTCHA_ENTERPRISE_SITE_KEY !== "YOUR_RECAPTCHA_ENTERPRISE_SITE_KEY"){
       firebase.appCheck().activate(
   new firebase.appCheck.ReCaptchaEnterpriseProvider(
     RECAPTCHA_ENTERPRISE_SITE_KEY
