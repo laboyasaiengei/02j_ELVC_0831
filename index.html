@@ -1091,7 +1091,7 @@ const firebaseConfig = {
   appId: "1:643196836428:web:0f847a664907bb9dddf2e9"
 };
 // Firebase Console → App Check → このアプリを登録 → reCAPTCHA v3 で発行されたサイトキーを貼る
-const RECAPTCHA_ENTERPRISE_SITE_KEY = "6LfhKKgtAAAAAOa7wW3C4foOTs7hh7cocQWgU-bf";
+const RECAPTCHA_V3_SITE_KEY = "6LcAppctAAAAAMGN6vJnQqITfS-nH4-A3-Tg5uLu";
 // ローカルで動作確認する時だけ有効化（本番公開時はコメントアウトのままでOK）
 // self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
    
@@ -1509,13 +1509,8 @@ async function initFirebase(){
     setLoadingStep("Firebaseに接続中…");
     firebase.initializeApp(firebaseConfig);
 
-    if(RECAPTCHA_ENTERPRISE_SITE_KEY && RECAPTCHA_ENTERPRISE_SITE_KEY !== "YOUR_RECAPTCHA_ENTERPRISE_SITE_KEY"){
-      firebase.appCheck().activate(
-  new firebase.appCheck.ReCaptchaEnterpriseProvider(
-    RECAPTCHA_ENTERPRISE_SITE_KEY
-  ),
-  true
-);
+    if(RECAPTCHA_V3_SITE_KEY && RECAPTCHA_V3_SITE_KEY !== "YOUR_RECAPTCHA_V3_SITE_KEY"){
+      firebase.appCheck().activate(RECAPTCHA_V3_SITE_KEY, true);
     }
 
     // FULL REST: Firestore Web SDK is not used for data read/write/listeners.
