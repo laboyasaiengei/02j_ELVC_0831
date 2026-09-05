@@ -1419,6 +1419,213 @@ window.SENTINEL_ATLAS={
   reset:()=>localStorage.removeItem(SENTINEL_TELEMETRY_STORAGE_KEY)
 };
 
+
+/* ==================================================================
+   SENTINEL Shared Sync v0.3
+   Shared sink: Dev-CAESAR Firestore (anonymous auth + App Check)
+   - local Telemetry v0.2 remains the source of truth on this device
+   - every 10 minutes, only positive unsent deltas are atomically incremented
+   - one shared Firestore document per app / Pacific-Time date
+   - direct fetch is used so telemetry transport does NOT count itself
+   ================================================================== */
+const SENTINEL_SHARED_VERSION = "0.3";
+const SENTINEL_SHARED_APP_ID = "atlas-prod";
+const SENTINEL_SHARED_SYNC_MS = 10*60*1000;
+const SENTINEL_SHARED_COLLECTION = "sentinelTelemetryDaily";
+const SENTINEL_SHARED_STATE_KEY = "sentinelShared.v0.3.atlas-prod";
+
+const SENTINEL_SHARED_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCZOI7sTRGn2xw6VWPkXblb8KW4TM_BcwU",
+  authDomain: "dev-caesar.firebaseapp.com",
+  projectId: "dev-caesar",
+  storageBucket: "dev-caesar.firebasestorage.app",
+  messagingSenderId: "339298618142",
+  appId: "1:339298618142:web:69e5af56d4fb66840f170f"
+};
+const SENTINEL_SHARED_RECAPTCHA_ENTERPRISE_SITE_KEY = "6LffvagtAAAAAMYORF3VlYDdUBemsfqunrxkArCo";
+
+let sentinelSharedTimer=null;
+let sentinelSharedBusy=false;
+let sentinelSharedFirebaseApp=null;
+let sentinelSharedLastStatus={ok:false,at:0,error:"",writes:0};
+
+function sentinelSharedLoadState(){
+  try{
+    const x=JSON.parse(localStorage.getItem(SENTINEL_SHARED_STATE_KEY)||"null");
+    if(x && x.version===SENTINEL_SHARED_VERSION && x.sent) return x;
+  }catch(_){}
+  return {version:SENTINEL_SHARED_VERSION,sent:{}};
+}
+function sentinelSharedSaveState(x){
+  try{ localStorage.setItem(SENTINEL_SHARED_STATE_KEY,JSON.stringify(x)); }catch(_){}
+}
+function sentinelSharedTenMinuteKey(ts){
+  const d=new Date(ts);
+  const parts=new Intl.DateTimeFormat("en-CA",{
+    timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit",
+    hour:"2-digit",minute:"2-digit",hour12:false
+  }).formatToParts(d);
+  const g=t=>parts.find(p=>p.type===t)?.value||"00";
+  let hh=g("hour"); if(hh==="24") hh="00";
+  const mm=String(Math.floor(Number(g("minute"))/10)*10).padStart(2,"0");
+  return {date:`${g("year")}-${g("month")}-${g("day")}`,bucket:`${hh}${mm}`};
+}
+function sentinelSharedAggregateLocal(){
+  const out={};
+  const store=sentinelTelemetryLoad();
+  Object.values((store&&store.buckets)||{}).forEach(b=>{
+    const k=sentinelSharedTenMinuteKey(Number(b.t));
+    const day=out[k.date]||(out[k.date]={});
+    const z=day[k.bucket]||(day[k.bucket]={reads:0,writes:0,deletes:0});
+    z.reads+=Number(b.reads)||0; z.writes+=Number(b.writes)||0; z.deletes+=Number(b.deletes)||0;
+  });
+  return out;
+}
+function sentinelSharedDeltaPlan(){
+  const current=sentinelSharedAggregateLocal();
+  const state=sentinelSharedLoadState();
+  const plan=[];
+  Object.entries(current).forEach(([date,buckets])=>{
+    const sentDay=(state.sent[date]||{});
+    const deltas={};
+    Object.entries(buckets).forEach(([bucket,v])=>{
+      const old=sentDay[bucket]||{reads:0,writes:0,deletes:0};
+      const d={
+        reads:Math.max(0,(Number(v.reads)||0)-(Number(old.reads)||0)),
+        writes:Math.max(0,(Number(v.writes)||0)-(Number(old.writes)||0)),
+        deletes:Math.max(0,(Number(v.deletes)||0)-(Number(old.deletes)||0))
+      };
+      if(d.reads||d.writes||d.deletes)deltas[bucket]=d;
+    });
+    if(Object.keys(deltas).length) plan.push({date,buckets:deltas,current:buckets});
+  });
+  return {plan,state,current};
+}
+function sentinelSharedGetFirebaseApp(){
+  if(sentinelSharedFirebaseApp) return sentinelSharedFirebaseApp;
+  const existing=(firebase.apps||[]).find(a=>a.name==="sentinel-shared");
+  sentinelSharedFirebaseApp=existing||firebase.initializeApp(SENTINEL_SHARED_FIREBASE_CONFIG,"sentinel-shared");
+  try{
+    const ac=sentinelSharedFirebaseApp.appCheck();
+    if(!ac.__sentinelActivated){
+      ac.activate(new firebase.appCheck.ReCaptchaEnterpriseProvider(SENTINEL_SHARED_RECAPTCHA_ENTERPRISE_SITE_KEY),true);
+      ac.__sentinelActivated=true;
+    }
+  }catch(e){
+    console.warn("[SENTINEL] shared App Check activation",e);
+  }
+  return sentinelSharedFirebaseApp;
+}
+async function sentinelSharedHeaders(){
+  const app=sentinelSharedGetFirebaseApp();
+  const auth=app.auth();
+  let user=auth.currentUser;
+  if(!user){
+    const cred=await auth.signInAnonymously();
+    user=cred.user;
+  }
+  const idToken=await user.getIdToken();
+  const h={"Authorization":"Bearer "+idToken,"Content-Type":"application/json"};
+  try{
+    const r=await app.appCheck().getToken(false);
+    if(r&&r.token)h["X-Firebase-AppCheck"]=r.token;
+  }catch(e){
+    console.warn("[SENTINEL] shared App Check token unavailable",e);
+  }
+  return h;
+}
+function sentinelSharedDocName(date){
+  const safe=(SENTINEL_SHARED_APP_ID+"_"+date).replace(/[^A-Za-z0-9_-]/g,"_");
+  return `projects/${SENTINEL_SHARED_FIREBASE_CONFIG.projectId}/databases/(default)/documents/${SENTINEL_SHARED_COLLECTION}/${safe}`;
+}
+function sentinelSharedIncrementTransform(fieldPath,n){
+  return {fieldPath,increment:{integerValue:String(Math.max(0,Math.trunc(Number(n)||0)))}};
+}
+async function sentinelSharedCommitDay(date,bucketDeltas){
+  const headers=await sentinelSharedHeaders();
+  const docName=sentinelSharedDocName(date);
+  const transforms=[];
+  let dayR=0,dayW=0,dayD=0;
+  Object.entries(bucketDeltas).forEach(([bucket,d])=>{
+    const r=Number(d.reads)||0,w=Number(d.writes)||0,x=Number(d.deletes)||0;
+    dayR+=r;dayW+=w;dayD+=x;
+    if(r)transforms.push(sentinelSharedIncrementTransform(`r_${bucket}`,r));
+    if(w)transforms.push(sentinelSharedIncrementTransform(`w_${bucket}`,w));
+    if(x)transforms.push(sentinelSharedIncrementTransform(`d_${bucket}`,x));
+  });
+  if(dayR)transforms.push(sentinelSharedIncrementTransform("reads",dayR));
+  if(dayW)transforms.push(sentinelSharedIncrementTransform("writes",dayW));
+  if(dayD)transforms.push(sentinelSharedIncrementTransform("deletes",dayD));
+  transforms.push({fieldPath:"lastSeen",setToServerValue:"REQUEST_TIME"});
+  const write={
+    update:{
+      name:docName,
+      fields:{
+        appId:{stringValue:SENTINEL_SHARED_APP_ID},
+        datePT:{stringValue:date},
+        telemetryVersion:{stringValue:SENTINEL_TELEMETRY_VERSION},
+        sharedVersion:{stringValue:SENTINEL_SHARED_VERSION}
+      }
+    },
+    updateMask:{fieldPaths:["appId","datePT","telemetryVersion","sharedVersion"]},
+    updateTransforms:transforms
+  };
+  const url=`https://firestore.googleapis.com/v1/projects/${SENTINEL_SHARED_FIREBASE_CONFIG.projectId}/databases/(default)/documents:commit`;
+  const res=await fetch(url,{method:"POST",headers,body:JSON.stringify({writes:[write]}),cache:"no-store"});
+  const raw=await res.text();
+  if(!res.ok){
+    const e=new Error(`SENTINEL shared commit HTTP ${res.status}: ${raw.slice(0,400)}`);
+    e.httpStatus=res.status;throw e;
+  }
+  return true;
+}
+async function sentinelSharedFlush(){
+  if(sentinelSharedBusy)return false;
+  sentinelSharedBusy=true;
+  try{
+    const {plan,state,current}=sentinelSharedDeltaPlan();
+    let writes=0;
+    for(const item of plan){
+      await sentinelSharedCommitDay(item.date,item.buckets);
+      state.sent[item.date]=JSON.parse(JSON.stringify(item.current));
+      writes++;
+    }
+    const cutoff=Date.now()-9*24*60*60*1000;
+    Object.keys(state.sent).forEach(date=>{
+      const t=Date.parse(date+"T12:00:00Z");
+      if(Number.isFinite(t)&&t<cutoff)delete state.sent[date];
+    });
+    sentinelSharedSaveState(state);
+    sentinelSharedLastStatus={ok:true,at:Date.now(),error:"",writes};
+    return true;
+  }catch(e){
+    sentinelSharedLastStatus={ok:false,at:Date.now(),error:e&&e.message?e.message:String(e),writes:0};
+    console.warn("[SENTINEL] shared sync failed",e);
+    return false;
+  }finally{
+    sentinelSharedBusy=false;
+  }
+}
+function sentinelSharedSchedule(){
+  if(sentinelSharedTimer)clearTimeout(sentinelSharedTimer);
+  sentinelSharedTimer=setTimeout(async()=>{
+    await sentinelSharedFlush();
+    sentinelSharedSchedule();
+  },SENTINEL_SHARED_SYNC_MS);
+}
+window.SENTINEL_SHARED={
+  appId:SENTINEL_SHARED_APP_ID,
+  flush:sentinelSharedFlush,
+  status:()=>({...sentinelSharedLastStatus}),
+  plan:()=>sentinelSharedDeltaPlan().plan
+};
+setTimeout(()=>sentinelSharedFlush().finally(sentinelSharedSchedule),15000);
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible" && Date.now()-(sentinelSharedLastStatus.at||0)>SENTINEL_SHARED_SYNC_MS){
+    sentinelSharedFlush().catch(()=>{});
+  }
+});
+
 async function atlasRestCommit(writes){
   atlasRestThrowIfQuotaCooling();
   const headers=await atlasRestSecureHeaders();
