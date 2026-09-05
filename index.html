@@ -717,6 +717,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 }
 </style>
   <!-- ATLAS stable v8: iOS 18.7.10 preference long-wait guard (single read / 30s) -->
+  <!-- ATLAS production: duty manual refresh + HTTP 429 emergency brake -->
 
 <style>
 /* ===== ATLAS 040 REST migration: compact status ===== */
@@ -742,6 +743,30 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 #connBanner.compact-status{
   order:1;
 }
+
+.duty-refresh-btn{
+  order:2;
+  display:none;
+  width:23px;
+  height:23px;
+  flex:0 0 auto;
+  align-items:center;
+  justify-content:center;
+  border:1px solid rgba(255,255,255,.22);
+  background:rgba(255,255,255,.08);
+  color:#fff;
+  border-radius:999px;
+  padding:0;
+  font-size:14px;
+  line-height:1;
+  cursor:pointer;
+}
+.duty-refresh-btn.show{display:inline-flex;}
+.duty-refresh-btn:active{background:rgba(255,255,255,.18);}
+.duty-refresh-btn:disabled{opacity:.55;cursor:default;}
+.duty-refresh-btn.refreshing{animation:atlas-duty-refresh-spin .8s linear infinite;}
+@keyframes atlas-duty-refresh-spin{to{transform:rotate(360deg);}}
+.date-theme-row{order:3;}
 #connBanner.compact-status{
   display:flex !important;
   align-items:center;
@@ -815,6 +840,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
         <div class="conn-banner compact-status" id="connBanner" data-state="syncing">
           <span class="conn-dot"></span><span id="connBannerText">同期中</span>
         </div>
+        <button class="duty-refresh-btn" id="dutyRefreshBtn" type="button" aria-label="当番管理を更新" title="当番管理を更新">↻</button>
       </div>
     </div>
   </div>
@@ -1265,12 +1291,61 @@ function atlasRestRandomId(){
   bytes.forEach(n=>result+=chars[n%chars.length]);
   return result;
 }
+
+/* ===== ATLAS production: HTTP 429 shared emergency brake =====
+   429/RESOURCE_EXHAUSTED を検知したら、全REST読書きの再試行を共通クールダウンする。
+   段階: 60秒 → 120秒 → 300秒 → 900秒。成功時に解除。 */
+const ATLAS_REST_QUOTA_BACKOFF_MS=[60000,120000,300000,900000];
+let atlasRestQuotaFailureCount=0;
+let atlasRestQuotaCooldownUntil=0;
+
+function atlasRestIsQuotaError(e){
+  return !!(e && (
+    e.httpStatus===429 ||
+    /HTTP 429|RESOURCE_EXHAUSTED|Quota exceeded/i.test(String(e.message||""))
+  ));
+}
+function atlasRestQuotaRemainingMs(){
+  return Math.max(0,atlasRestQuotaCooldownUntil-Date.now());
+}
+function atlasRestEnterQuotaCooldown(){
+  const remaining=atlasRestQuotaRemainingMs();
+  if(remaining>0) return remaining; // 同時多発429で段階を一気に進めない
+  const idx=Math.min(atlasRestQuotaFailureCount,ATLAS_REST_QUOTA_BACKOFF_MS.length-1);
+  const delay=ATLAS_REST_QUOTA_BACKOFF_MS[idx];
+  atlasRestQuotaFailureCount=Math.min(atlasRestQuotaFailureCount+1,ATLAS_REST_QUOTA_BACKOFF_MS.length);
+  atlasRestQuotaCooldownUntil=Date.now()+delay;
+  return delay;
+}
+function atlasRestClearQuotaCooldown(){
+  atlasRestQuotaFailureCount=0;
+  atlasRestQuotaCooldownUntil=0;
+}
+function atlasRestThrowIfQuotaCooling(){
+  const remaining=atlasRestQuotaRemainingMs();
+  if(remaining<=0) return;
+  const err=new Error(`HTTP 429 fail-safe cooldown (${Math.ceil(remaining/1000)}s remaining)`);
+  err.httpStatus=429;
+  err.isQuotaCooldown=true;
+  throw err;
+}
+function atlasRestHttpError(prefix,res,raw){
+  const err=new Error(`${prefix} HTTP ${res.status}: ${(raw||"").slice(0,500)}`);
+  err.httpStatus=res.status;
+  if(res.status===429 || /RESOURCE_EXHAUSTED|Quota exceeded/i.test(String(raw||""))){
+    atlasRestEnterQuotaCooldown();
+  }
+  return err;
+}
+
 async function atlasRestCommit(writes){
+  atlasRestThrowIfQuotaCooling();
   const headers=await atlasRestSecureHeaders();
   const url=`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(firebaseConfig.projectId)}/databases/(default)/documents:commit`;
   const res=await fetch(url,{method:"POST",headers,body:JSON.stringify({writes}),cache:"no-store"});
   const raw=await res.text();
-  if(!res.ok) throw new Error(`REST COMMIT HTTP ${res.status}: ${raw.slice(0,500)}`);
+  if(!res.ok) throw atlasRestHttpError("REST COMMIT",res,raw);
+  atlasRestClearQuotaCooldown();
   return raw?JSON.parse(raw):{};
 }
 function atlasRestWriteForSet(collection,id,data,merge,precondition){
@@ -1299,12 +1374,14 @@ function atlasRestDocSnap(collection,id,doc){
   };
 }
 async function atlasRestGetDocRaw(collection,id){
+  atlasRestThrowIfQuotaCooling();
   const headers=await atlasRestSecureHeaders();
   const url=`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(firebaseConfig.projectId)}/databases/(default)/documents/${encodeURIComponent(collection)}/${encodeURIComponent(id)}`;
   const res=await fetch(url,{headers,cache:"no-store"});
-  if(res.status===404) return null;
+  if(res.status===404){ atlasRestClearQuotaCooldown(); return null; }
   const raw=await res.text();
-  if(!res.ok) throw new Error(`REST GET HTTP ${res.status}: ${raw.slice(0,500)}`);
+  if(!res.ok) throw atlasRestHttpError("REST GET",res,raw);
+  atlasRestClearQuotaCooldown();
   return raw?JSON.parse(raw):null;
 }
 function atlasRestQueryOp(op){
@@ -1335,10 +1412,12 @@ async function atlasRestRunQuery(collection,state){
     }));
   }
   if(state.limit!=null) sq.limit=state.limit;
+  atlasRestThrowIfQuotaCooling();
   const url=`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(firebaseConfig.projectId)}/databases/(default)/documents:runQuery`;
   const res=await fetch(url,{method:"POST",headers,body:JSON.stringify({structuredQuery:sq}),cache:"no-store"});
   const raw=await res.text();
-  if(!res.ok) throw new Error(`REST QUERY HTTP ${res.status}: ${raw.slice(0,500)}`);
+  if(!res.ok) throw atlasRestHttpError("REST QUERY",res,raw);
+  atlasRestClearQuotaCooldown();
   const rows=raw?JSON.parse(raw):[];
   const docs=(Array.isArray(rows)?rows:[]).filter(r=>r&&r.document).map(r=>{
     const id=(r.document.name||"").split("/").pop();
@@ -1848,49 +1927,13 @@ const UNDO_LIMIT = 20;
 
 let atlasRestPollTimer=null,atlasRestPollBusy=false,atlasRestPollTab=null;
 let atlasRestPollFailureCount=0;
-// 同期周期を用途別に分離する。
-// 栽培管理は複数端末でのチェック共有を優先して4秒、
-// 当番管理（希望表・カレンダー・データ）はCAESARと同じ60秒。
+// 栽培管理は複数端末でのチェック共有を優先して4秒。
+// 当番管理は自動ポーリングなし。表示時1回＋↻手動更新のみ。
 const ATLAS_REST_POLL_MS=4000;
-const ATLAS_DUTY_POLL_MS=60000;
 const ATLAS_REST_BACKOFF_MS=[4000,10000,30000,60000];
-let atlasDutyPollTimer=null, atlasDutyPollBusy=false;
 
 function stopAtlasDutyPolling(){
-  if(atlasDutyPollTimer){clearTimeout(atlasDutyPollTimer);atlasDutyPollTimer=null;}
-}
-function atlasScheduleDutyPoll(delay=ATLAS_DUTY_POLL_MS){
-  stopAtlasDutyPolling();
-  atlasDutyPollTimer=setTimeout(atlasDutyPollOnce, Math.max(0,delay));
-}
-async function atlasDutyPollOnce(){
-  atlasDutyPollTimer=null;
-  const dutyVisible=document.getElementById("dutyMain")?.style.display!=="none";
-  if(!dutyVisible){ return; }
-  if(atlasDutyPollBusy || !atlasRestAuthReady || !navigator.onLine){
-    atlasScheduleDutyPoll(ATLAS_DUTY_POLL_MS);
-    return;
-  }
-  // 編集用モーダル表示中は自動再描画せず、入力を保護する。
-  if(document.querySelector(".modal-overlay.show")){
-    atlasScheduleDutyPoll(ATLAS_DUTY_POLL_MS);
-    return;
-  }
-  atlasDutyPollBusy=true;
-  try{
-    await renderDutyPanel();
-    atlasMarkSyncSuccess();
-  }catch(err){
-    setAtlasConnState(navigator.onLine?"error":"offline");
-  }finally{
-    atlasDutyPollBusy=false;
-    if(document.getElementById("dutyMain")?.style.display!=="none")
-      atlasScheduleDutyPoll(ATLAS_DUTY_POLL_MS);
-  }
-}
-function startAtlasDutyPolling(){
-  stopAtlasDutyPolling();
-  atlasScheduleDutyPoll(ATLAS_DUTY_POLL_MS);
+  // 旧60秒当番ポーリングは廃止済み。互換用no-op。
 }
 
 function stopAtlasRestPolling(){
@@ -1944,10 +1987,15 @@ async function atlasRestPollOnce(tab){
     atlasMarkSyncSuccess();
     atlasScheduleRestPoll(ATLAS_REST_POLL_MS);
   }catch(err){
-    atlasRestPollFailureCount=Math.min(atlasRestPollFailureCount+1,ATLAS_REST_BACKOFF_MS.length-1);
-    const delay=ATLAS_REST_BACKOFF_MS[atlasRestPollFailureCount];
     setAtlasConnState(navigator.onLine?"error":"offline");
-    atlasScheduleRestPoll(delay);
+    if(atlasRestIsQuotaError(err)){
+      const delay=Math.max(1000,atlasRestQuotaRemainingMs()||atlasRestEnterQuotaCooldown());
+      atlasScheduleRestPoll(delay);
+    }else{
+      atlasRestPollFailureCount=Math.min(atlasRestPollFailureCount+1,ATLAS_REST_BACKOFF_MS.length-1);
+      const delay=ATLAS_REST_BACKOFF_MS[atlasRestPollFailureCount];
+      atlasScheduleRestPoll(delay);
+    }
   }finally{
     atlasRestPollBusy=false;
   }
@@ -4581,13 +4629,16 @@ document.getElementById("modeSwitch").addEventListener("click", async (e)=>{
   document.getElementById("dutyModeHeader").style.display = isDuty ? "" : "none";
   document.getElementById("main").style.display = isDuty ? "none" : "";
   document.getElementById("dutyMain").style.display = isDuty ? "" : "none";
+  const dutyRefreshBtn=document.getElementById("dutyRefreshBtn");
+  if(dutyRefreshBtn) dutyRefreshBtn.classList.toggle("show",isDuty);
   if(isDuty){
-    // 当番管理では栽培管理の4秒ポーリングを止め、当番管理専用60秒同期へ切替。
+    // 当番管理では栽培管理の4秒ポーリングを止め、表示時に1回だけ取得。
+    // 以後は右上の↻による手動更新のみ。
     stopAtlasRestPolling();
+    stopAtlasDutyPolling();
     await renderDutyPanel();
-    startAtlasDutyPolling();
   }else{
-    // 栽培管理へ戻ったら当番管理の60秒同期を止め、4秒同期を即時再開。
+    // 栽培管理へ戻ったら4秒同期を即時再開。
     stopAtlasDutyPolling();
     startAtlasRestPolling(currentTab);
   }
@@ -4600,6 +4651,38 @@ document.getElementById("dutySubNav").addEventListener("click", async (e)=>{
   dutySub = btn.getAttribute("data-dsub");
   await renderDutyPanel();
 });
+
+/* 当番管理: 明示的な手動更新。429中は追加readを送らず非常ブレーキを優先。 */
+const dutyRefreshBtn=document.getElementById("dutyRefreshBtn");
+if(dutyRefreshBtn){
+  dutyRefreshBtn.addEventListener("click",async ()=>{
+    if(dutyRefreshBtn.disabled) return;
+    const remaining=atlasRestQuotaRemainingMs();
+    if(remaining>0){
+      showToast(`read保護のため更新停止中（約${Math.ceil(remaining/1000)}秒）`);
+      return;
+    }
+    dutyRefreshBtn.disabled=true;
+    dutyRefreshBtn.classList.add("refreshing");
+    setAtlasConnState(navigator.onLine?"syncing":"offline");
+    try{
+      await renderDutyPanel();
+      if(navigator.onLine) atlasMarkSyncSuccess();
+      showToast("当番管理を更新しました");
+    }catch(e){
+      if(atlasRestIsQuotaError(e)){
+        const wait=Math.max(0,atlasRestQuotaRemainingMs());
+        showToast(`Firestore上限保護のため更新を一時停止します（約${Math.ceil(wait/1000)}秒）`);
+      }else{
+        showToast("当番管理を更新できませんでした");
+      }
+      setAtlasConnState(navigator.onLine?"error":"offline");
+    }finally{
+      dutyRefreshBtn.classList.remove("refreshing");
+      dutyRefreshBtn.disabled=false;
+    }
+  });
+}
 
 /* =========================================================================
    苗テラス 記録シート（朝: 管理簿 / 昼: 培養液記録シート）
