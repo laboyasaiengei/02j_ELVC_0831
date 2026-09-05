@@ -2224,7 +2224,7 @@ let atlasRestPollTimer=null,atlasRestPollBusy=false,atlasRestPollTab=null;
 let atlasRestPollFailureCount=0;
 // 栽培管理は複数端末でのチェック共有を優先して4秒。
 // 当番管理は自動ポーリングなし。表示時1回＋↻手動更新のみ。
-const ATLAS_REST_POLL_MS=4000;
+const ATLAS_REST_POLL_MS=10000;
 const ATLAS_REST_BACKOFF_MS=[4000,10000,30000,60000];
 
 function stopAtlasDutyPolling(){
