@@ -1338,6 +1338,87 @@ function atlasRestHttpError(prefix,res,raw){
   return err;
 }
 
+
+/* ==================================================================
+   SENTINEL Telemetry v0.2 / ATLAS
+   - Firestore RESTの実通信成功時のみlocalStorageへ推計値を記録
+   - 監視用Firestore通信は0
+   - 1分バケット / 8日保持
+   - SENTINEL v0.1 LOCAL互換
+   ================================================================== */
+const SENTINEL_TELEMETRY_VERSION="0.2";
+const SENTINEL_TELEMETRY_APP="ATLAS";
+const SENTINEL_TELEMETRY_STORAGE_KEY="sentinelTelemetry.v0.2.ATLAS";
+function sentinelPtDateKey(ts){
+  try{
+    const p=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date(ts));
+    const g=t=>p.find(x=>x.type===t)?.value||"";
+    return `${g("year")}-${g("month")}-${g("day")}`;
+  }catch(_){return "";}
+}
+function sentinelTelemetryLoad(){
+  try{
+    const v=JSON.parse(localStorage.getItem(SENTINEL_TELEMETRY_STORAGE_KEY)||"null");
+    if(v&&v.version===SENTINEL_TELEMETRY_VERSION&&v.buckets&&typeof v.buckets==="object")return v;
+  }catch(_){}
+  return {version:SENTINEL_TELEMETRY_VERSION,app:SENTINEL_TELEMETRY_APP,buckets:{}};
+}
+function sentinelTelemetrySave(s){
+  try{localStorage.setItem(SENTINEL_TELEMETRY_STORAGE_KEY,JSON.stringify(s));}
+  catch(e){console.warn("[SENTINEL] telemetry save skipped",e);}
+}
+function sentinelTelemetryRecord(reads,writes,deletes,kind){
+  try{
+    const r=Math.max(0,Number(reads)||0),w=Math.max(0,Number(writes)||0),d=Math.max(0,Number(deletes)||0);
+    if(!r&&!w&&!d)return;
+    const s=sentinelTelemetryLoad(),minute=Math.floor(Date.now()/60000)*60000,key=String(minute);
+    const b=s.buckets[key]||{t:minute,reads:0,writes:0,deletes:0,kinds:{}};
+    b.reads+=r;b.writes+=w;b.deletes+=d;
+    const k=String(kind||"unknown"),kb=b.kinds[k]||{reads:0,writes:0,deletes:0,calls:0};
+    kb.reads+=r;kb.writes+=w;kb.deletes+=d;kb.calls++;b.kinds[k]=kb;s.buckets[key]=b;
+    const cutoff=Date.now()-8*24*60*60*1000;
+    Object.keys(s.buckets).forEach(x=>{if(Number(x)<cutoff)delete s.buckets[x];});
+    sentinelTelemetrySave(s);
+  }catch(e){console.warn("[SENTINEL] telemetry record skipped",e);}
+}
+function sentinelTelemetryRecordCommit(writes,kind){
+  let w=0,d=0;
+  (Array.isArray(writes)?writes:[]).forEach(x=>{if(x&&x.delete)d++;else if(x&&(x.update||x.transform))w++;});
+  sentinelTelemetryRecord(0,w,d,kind||"commit");
+}
+function sentinelTelemetrySum(fn){
+  return Object.values(sentinelTelemetryLoad().buckets).reduce((a,b)=>{
+    if(!fn||fn(b)){a.reads+=+b.reads||0;a.writes+=+b.writes||0;a.deletes+=+b.deletes||0;}return a;
+  },{reads:0,writes:0,deletes:0});
+}
+function sentinelTelemetryKinds(ms){
+  const now=Date.now(),out={};
+  Object.values(sentinelTelemetryLoad().buckets).forEach(b=>{
+    if(ms&&now-Number(b.t)>ms)return;
+    Object.entries(b.kinds||{}).forEach(([k,v])=>{
+      const o=out[k]||(out[k]={reads:0,writes:0,deletes:0,calls:0});
+      o.reads+=+v.reads||0;o.writes+=+v.writes||0;o.deletes+=+v.deletes||0;o.calls+=+v.calls||0;
+    });
+  });return out;
+}
+function sentinelTelemetrySummary(){
+  const now=Date.now(),pt=sentinelPtDateKey(now);
+  return {
+    hour:sentinelTelemetrySum(b=>now-Number(b.t)<=3600000),
+    day24:sentinelTelemetrySum(b=>now-Number(b.t)<=86400000),
+    week:sentinelTelemetrySum(b=>now-Number(b.t)<=604800000),
+    quotaDayPT:sentinelTelemetrySum(b=>sentinelPtDateKey(Number(b.t))===pt),
+    quotaDayPTDate:pt
+  };
+}
+window.SENTINEL_ATLAS={
+  version:SENTINEL_TELEMETRY_VERSION,
+  summary:sentinelTelemetrySummary,
+  kinds:(ms)=>sentinelTelemetryKinds(ms||86400000),
+  buckets:()=>Object.values(sentinelTelemetryLoad().buckets).sort((a,b)=>a.t-b.t),
+  reset:()=>localStorage.removeItem(SENTINEL_TELEMETRY_STORAGE_KEY)
+};
+
 async function atlasRestCommit(writes){
   atlasRestThrowIfQuotaCooling();
   const headers=await atlasRestSecureHeaders();
@@ -1346,6 +1427,7 @@ async function atlasRestCommit(writes){
   const raw=await res.text();
   if(!res.ok) throw atlasRestHttpError("REST COMMIT",res,raw);
   atlasRestClearQuotaCooldown();
+  sentinelTelemetryRecordCommit(writes,"commit");
   return raw?JSON.parse(raw):{};
 }
 function atlasRestWriteForSet(collection,id,data,merge,precondition){
@@ -1378,10 +1460,15 @@ async function atlasRestGetDocRaw(collection,id){
   const headers=await atlasRestSecureHeaders();
   const url=`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(firebaseConfig.projectId)}/databases/(default)/documents/${encodeURIComponent(collection)}/${encodeURIComponent(id)}`;
   const res=await fetch(url,{headers,cache:"no-store"});
-  if(res.status===404){ atlasRestClearQuotaCooldown(); return null; }
+  if(res.status===404){
+    atlasRestClearQuotaCooldown();
+    sentinelTelemetryRecord(1,0,0,"get-missing");
+    return null;
+  }
   const raw=await res.text();
   if(!res.ok) throw atlasRestHttpError("REST GET",res,raw);
   atlasRestClearQuotaCooldown();
+  sentinelTelemetryRecord(1,0,0,"get-document");
   return raw?JSON.parse(raw):null;
 }
 function atlasRestQueryOp(op){
@@ -1423,6 +1510,7 @@ async function atlasRestRunQuery(collection,state){
     const id=(r.document.name||"").split("/").pop();
     return atlasRestDocSnap(collection,id,r.document);
   });
+  sentinelTelemetryRecord(Math.max(1,docs.length),0,0,"run-query");
   return {docs,forEach(cb){docs.forEach(cb);},empty:docs.length===0,size:docs.length};
 }
 function atlasRestQuery(collection,state){
