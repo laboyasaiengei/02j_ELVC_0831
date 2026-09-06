@@ -1428,7 +1428,7 @@ window.SENTINEL_ATLAS={
    - one shared Firestore document per app / Pacific-Time date
    - direct fetch is used so telemetry transport does NOT count itself
    ================================================================== */
-const SENTINEL_SHARED_VERSION = "0.3";
+const SENTINEL_SHARED_VERSION = "0.4";
 const SENTINEL_SHARED_APP_ID = "atlas-prod";
 const SENTINEL_SHARED_SYNC_MS = 10*60*1000;
 const SENTINEL_SHARED_COLLECTION = "sentinelTelemetryDaily";
@@ -1459,7 +1459,7 @@ function sentinelSharedLoadState(){
 function sentinelSharedSaveState(x){
   try{ localStorage.setItem(SENTINEL_SHARED_STATE_KEY,JSON.stringify(x)); }catch(_){}
 }
-function sentinelSharedTenMinuteKey(ts){
+function sentinelSharedMinuteKey(ts){
   const d=new Date(ts);
   const parts=new Intl.DateTimeFormat("en-CA",{
     timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit",
@@ -1467,14 +1467,14 @@ function sentinelSharedTenMinuteKey(ts){
   }).formatToParts(d);
   const g=t=>parts.find(p=>p.type===t)?.value||"00";
   let hh=g("hour"); if(hh==="24") hh="00";
-  const mm=String(Math.floor(Number(g("minute"))/10)*10).padStart(2,"0");
+  const mm=String(Number(g("minute"))).padStart(2,"0");
   return {date:`${g("year")}-${g("month")}-${g("day")}`,bucket:`${hh}${mm}`};
 }
 function sentinelSharedAggregateLocal(){
   const out={};
   const store=sentinelTelemetryLoad();
   Object.values((store&&store.buckets)||{}).forEach(b=>{
-    const k=sentinelSharedTenMinuteKey(Number(b.t));
+    const k=sentinelSharedMinuteKey(Number(b.t));
     const day=out[k.date]||(out[k.date]={});
     const z=day[k.bucket]||(day[k.bucket]={reads:0,writes:0,deletes:0});
     z.reads+=Number(b.reads)||0; z.writes+=Number(b.writes)||0; z.deletes+=Number(b.deletes)||0;
