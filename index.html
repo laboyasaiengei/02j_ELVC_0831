@@ -1381,8 +1381,8 @@ function sentinelTelemetryRecord(reads,writes,deletes,kind){
     sentinelTelemetrySave(s);
     // Actual Firestore activity is the most reliable sign that JS is awake.
     // If the scheduled cargo has gone stale, request one debounced catch-up dispatch.
-    if(typeof sentinelSharedRequestDemandFlush==="function")
-      sentinelSharedRequestDemandFlush("firestore-activity",false);
+    if(typeof sentinelSharedRequestActivityFlush==="function")
+      sentinelSharedRequestActivityFlush();
   }catch(e){console.warn("[SENTINEL] telemetry record skipped",e);}
 }
 function sentinelTelemetryRecordCommit(writes,kind){
@@ -1425,7 +1425,7 @@ window.SENTINEL_ATLAS={
 
 
 /* ==================================================================
-   SENTINEL Shared Sync v0.5 · 1-minute buckets / 10-minute flush / SAFEFLUSH + DEMAND DISPATCH
+   SENTINEL Shared Sync v0.6 · 1-minute buckets / SAFEFLUSH + ACTIVITY FLUSH
    Shared sink: Dev-CAESAR Firestore (anonymous auth + App Check)
    - local Telemetry v0.2 remains the source of truth on this device
    - every 10 minutes, only positive unsent deltas are atomically incremented
@@ -1457,7 +1457,9 @@ let sentinelSharedLastStatus={ok:false,at:0,error:"",writes:0};
 // Keep the 10-minute timetable, but also dispatch when real app traffic occurs
 // after the shared line has been stale for >=10 minutes, and on resume/online/focus.
 const SENTINEL_SHARED_DEMAND_DEBOUNCE_MS = 1200;
+const SENTINEL_SHARED_ACTIVITY_QUIET_MS = 30*1000;
 let sentinelSharedDemandTimer=null;
+let sentinelSharedActivityTimer=null;
 let sentinelSharedLastSuccessAt=0;
 
 function sentinelSharedLoadState(){
@@ -1719,6 +1721,19 @@ function sentinelSharedRequestDemandFlush(reason, force=false){
     },SENTINEL_SHARED_DEMAND_DEBOUNCE_MS);
   }catch(e){console.warn("[SENTINEL] demand dispatch skipped",e);}
 }
+function sentinelSharedRequestActivityFlush(){
+  // Do not write to Shared for every app read/write. Instead, restart one
+  // 30-second quiet timer and send the accumulated unsent delta as one cargo.
+  if(sentinelSharedActivityTimer)clearTimeout(sentinelSharedActivityTimer);
+  sentinelSharedActivityTimer=setTimeout(async()=>{
+    sentinelSharedActivityTimer=null;
+    if(!navigator.onLine || sentinelSharedBusy || !sentinelSharedHasPending()) return;
+    console.info("[SENTINEL] activity flush");
+    await sentinelSharedFlush();
+    sentinelSharedSchedule();
+  },SENTINEL_SHARED_ACTIVITY_QUIET_MS);
+}
+
 window.SENTINEL_SHARED={
   appId:SENTINEL_SHARED_APP_ID,
   flush:sentinelSharedFlush,
@@ -1733,7 +1748,21 @@ function sentinelSharedResumeCheck(reason){
   sentinelSharedRequestDemandFlush(reason,true);
 }
 document.addEventListener("visibilitychange",()=>{
-  if(document.visibilityState==="visible") sentinelSharedResumeCheck("visibility");
+  if(document.visibilityState==="visible"){
+    sentinelSharedResumeCheck("visibility");
+  }else{
+    if(sentinelSharedActivityTimer){
+      clearTimeout(sentinelSharedActivityTimer);
+      sentinelSharedActivityTimer=null;
+    }
+    // Best-effort departure before iOS/PWA suspension.
+    if(navigator.onLine && !sentinelSharedBusy && sentinelSharedHasPending())
+      sentinelSharedFlush().catch(()=>{});
+  }
+});
+window.addEventListener("pagehide",()=>{
+  if(navigator.onLine && !sentinelSharedBusy && sentinelSharedHasPending())
+    sentinelSharedFlush().catch(()=>{});
 });
 window.addEventListener("pageshow",()=>sentinelSharedResumeCheck("pageshow"));
 window.addEventListener("focus",()=>sentinelSharedResumeCheck("focus"));
