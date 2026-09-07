@@ -742,8 +742,14 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 }
 
   /* OSダーク起動時：同期処理には触れず、完成画面の見せ方だけ滑らかにする */
-  body.atlas-startup-theme-transition #app{ opacity:0; }
-  #app{ transition:opacity .42s cubic-bezier(.22,.61,.36,1); }
+  body.atlas-startup-theme-transition > header.top,
+  body.atlas-startup-theme-transition > main{
+    opacity:0;
+  }
+  body > header.top,
+  body > main{
+    transition:opacity .42s cubic-bezier(.22,.61,.36,1);
+  }
 </style>
   <!-- ATLAS stable v8: iOS 18.7.10 preference long-wait guard (single read / 30s) -->
   <!-- ATLAS production: duty manual refresh + HTTP 429 emergency brake -->
@@ -5700,22 +5706,6 @@ document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
           });
           return;
         }
-        document.documentElement.dataset.theme = "dark";
-      }
-    }
-
-    if(overlay) overlay.classList.add("hide");
-
-            requestAnimationFrame(()=>{
-              requestAnimationFrame(()=>{
-                curtain.style.opacity = "0";
-              });
-            });
-          }, 260);
-          return;
-        }
-
-        // カーテンが無い異常系だけ即時切替
         document.documentElement.dataset.theme = "dark";
       }
     }
