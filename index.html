@@ -1986,47 +1986,6 @@ const atlasRestDb={
     }
   }
 };
-async function atlasFetchDocumentQuietREST(collection,id){
-  // 単一doc GETは未作成docでHTTP 404になりSafariコンソールを赤く埋めるため、
-  // __name__ 指定のrunQueryで静かに存在確認する（未存在でもHTTP 200）。
-  const headers = await atlasRestSecureHeaders();
-  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(firebaseConfig.projectId)}/databases/(default)/documents:runQuery`;
-  const fullName = `projects/${firebaseConfig.projectId}/databases/(default)/documents/${collection}/${id}`;
-  const controller = new AbortController();
-  const timer = setTimeout(()=>controller.abort(), REST_READ_TIMEOUT_MS);
-  try{
-    const body = {
-      structuredQuery:{
-        from:[{collectionId:collection}],
-        where:{
-          fieldFilter:{
-            field:{fieldPath:"__name__"},
-            op:"EQUAL",
-            value:{referenceValue:fullName}
-          }
-        },
-        limit:1
-      }
-    };
-    const res = await fetch(url,{
-      method:"POST",
-      headers,
-      body:JSON.stringify(body),
-      signal:controller.signal,
-      cache:"no-store"
-    });
-    const raw = await res.text();
-    if(!res.ok) throw new Error(`REST HTTP ${res.status}: ${raw.slice(0,450)}`);
-    const rows = raw ? JSON.parse(raw) : [];
-    const row = (Array.isArray(rows) ? rows : []).find(x=>x && x.document && x.document.name);
-    sentinelTelemetryRecord(1,0,0,row ? "fetch-document-quiet" : "fetch-document-missing-quiet");
-    if(!row) return {exists:false,id,data:null};
-    return {exists:true,id,data:atlasDecodeDocumentFull(row.document)};
-  }finally{
-    clearTimeout(timer);
-  }
-}
-
 async function atlasFetchDocumentREST(collection,id){
   const doc=await atlasRestGetDocRaw(collection,id);
   return {exists:!!doc,data:doc?atlasDecodeDocumentFull(doc):null};
@@ -2494,7 +2453,7 @@ async function atlasRestPollOnce(tab){
   try{
     const [sd,cd]=await Promise.all([
       atlasFetchDocumentREST("structures",tab),
-      atlasFetchDocumentQuietREST("checks",tab+"_"+todayStr)
+      atlasFetchDocumentREST("checks",tab+"_"+todayStr)
     ]);
     let changed=false;
     if(sd.exists&&sd.data&&Array.isArray(sd.data.sections)){
