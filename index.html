@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <script>
-/* 起動時は常にlight固定。splash(manifestのbackground_color)と初期描画色を
-   一致させることで起動時の色チラつきを防ぐ。ダークにしたい場合は起動後に
-   手動トグルで都度切り替える方式とし、OS判定・保存は行わない。 */
+/* 起動時のスプラッシュ～読み込み画面までは常にlight固定。
+   初期描画の色チラつきを防ぎ、読み込み完了時だけOSの配色設定を判定する。
+   OSがdarkなら既存カーテンで覆ってからdarkへ切り替え、ホームをフェード表示する。
+   起動後の手動トグルは従来どおり保存せず、そのセッション内だけ有効。 */
 (function(){
   document.documentElement.dataset.theme = 'light';
 })();
@@ -440,6 +441,30 @@
   }
   .backup-pager button:disabled{ background:#efece2; color:var(--ink-soft); opacity:.6; cursor:default; }
   .backup-pager .backup-pager-label{ font-size:12px; color:var(--ink-soft); white-space:nowrap; }
+
+  .date-wheel-row{
+    display:grid;
+    grid-template-columns:1.35fr .9fr .9fr;
+    gap:8px;
+    margin:8px 0 18px;
+  }
+  .date-wheel-row label{
+    display:flex; flex-direction:column; gap:5px;
+    font-size:11px; color:var(--ink-soft); font-weight:700; text-align:center;
+  }
+  .date-wheel-row select{
+    width:100%;
+    font-family:"Noto Sans JP",sans-serif;
+    font-size:20px; font-weight:700;
+    text-align:center; text-align-last:center;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#fff; color:var(--ink);
+    padding:12px 4px; min-height:52px;
+  }
+  html[data-theme="dark"] .date-wheel-row select{
+    background:var(--surface-2); color:var(--ink); border-color:var(--line);
+  }
   .modal-close{
     display:block; width:100%; margin-top:14px; border:none; background:#efece2; color:var(--ink-soft);
     border-radius:12px; padding:12px; font-size:13.5px; cursor:pointer; font-weight:600;
@@ -939,6 +964,23 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
     <div class="modal-sub">希望表への入力に使います。このデバイスに記憶されます</div>
     <div id="nameList"></div>
     <button class="modal-close" id="closeNameModal">閉じる</button>
+  </div>
+</div>
+
+
+<div class="modal-overlay" id="dateWheelModal">
+  <div class="modal-sheet">
+    <div class="modal-title" id="dateWheelTitle">日付を選択</div>
+    <div class="modal-sub">年・月・日をダイヤルで選んでください</div>
+    <div class="date-wheel-row">
+      <label><span>年</span><select id="dateWheelYear"></select></label>
+      <label><span>月</span><select id="dateWheelMonth"></select></label>
+      <label><span>日</span><select id="dateWheelDay"></select></label>
+    </div>
+    <div class="sync-modal-actions">
+      <button class="primary" id="dateWheelOk">この日付にする</button>
+      <button class="cancel" id="dateWheelCancel">キャンセル</button>
+    </div>
   </div>
 </div>
 
@@ -1934,6 +1976,47 @@ const atlasRestDb={
     }
   }
 };
+async function atlasFetchDocumentQuietREST(collection,id){
+  // 単一doc GETは未作成docでHTTP 404になりSafariコンソールを赤く埋めるため、
+  // __name__ 指定のrunQueryで静かに存在確認する（未存在でもHTTP 200）。
+  const headers = await atlasRestSecureHeaders();
+  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(firebaseConfig.projectId)}/databases/(default)/documents:runQuery`;
+  const fullName = `projects/${firebaseConfig.projectId}/databases/(default)/documents/${collection}/${id}`;
+  const controller = new AbortController();
+  const timer = setTimeout(()=>controller.abort(), REST_READ_TIMEOUT_MS);
+  try{
+    const body = {
+      structuredQuery:{
+        from:[{collectionId:collection}],
+        where:{
+          fieldFilter:{
+            field:{fieldPath:"__name__"},
+            op:"EQUAL",
+            value:{referenceValue:fullName}
+          }
+        },
+        limit:1
+      }
+    };
+    const res = await fetch(url,{
+      method:"POST",
+      headers,
+      body:JSON.stringify(body),
+      signal:controller.signal,
+      cache:"no-store"
+    });
+    const raw = await res.text();
+    if(!res.ok) throw new Error(`REST HTTP ${res.status}: ${raw.slice(0,450)}`);
+    const rows = raw ? JSON.parse(raw) : [];
+    const row = (Array.isArray(rows) ? rows : []).find(x=>x && x.document && x.document.name);
+    sentinelTelemetryRecord(1,0,0,row ? "fetch-document-quiet" : "fetch-document-missing-quiet");
+    if(!row) return {exists:false,id,data:null};
+    return {exists:true,id,data:atlasDecodeDocumentFull(row.document)};
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
 async function atlasFetchDocumentREST(collection,id){
   const doc=await atlasRestGetDocRaw(collection,id);
   return {exists:!!doc,data:doc?atlasDecodeDocumentFull(doc):null};
@@ -2401,7 +2484,7 @@ async function atlasRestPollOnce(tab){
   try{
     const [sd,cd]=await Promise.all([
       atlasFetchDocumentREST("structures",tab),
-      atlasFetchDocumentREST("checks",tab+"_"+todayStr)
+      atlasFetchDocumentQuietREST("checks",tab+"_"+todayStr)
     ]);
     let changed=false;
     if(sd.exists&&sd.data&&Array.isArray(sd.data.sections)){
@@ -2863,7 +2946,32 @@ async function selectDate(day){
 }
 
 /* ---------- render ---------- */
+let atlasRenderDeferredForEditing = false;
+
+function atlasCultivationTextInputFocused(){
+  const a = document.activeElement;
+  if(!a || !a.matches) return false;
+  return !!a.matches('#main input[type="text"], #main textarea');
+}
+
+function atlasFlushDeferredRender(){
+  if(!atlasRenderDeferredForEditing || atlasCultivationTextInputFocused()) return;
+  atlasRenderDeferredForEditing = false;
+  render();
+}
+
+document.addEventListener("focusout", ()=>{
+  if(atlasRenderDeferredForEditing) setTimeout(atlasFlushDeferredRender, 80);
+}, true);
+
 function render(){
+  // iPadOS/Safari: 定期同期で #main を作り直すとフォーカスが外れ、
+  // ソフトウェアキーボードが勝手に閉じる。編集中だけ再描画を後回しにする。
+  if(atlasCultivationTextInputFocused()){
+    atlasRenderDeferredForEditing = true;
+    return;
+  }
+  atlasRenderDeferredForEditing = false;
   const main = document.getElementById("main");
   main.innerHTML = "";
   if(isConfigPlaceholder()){
@@ -4004,9 +4112,62 @@ function renderDutyBackupListPage(){
     const label = `${ts.getMonth()+1}/${ts.getDate()} ${pad(ts.getHours())}:${pad(ts.getMinutes())} ${data.auto?"(自動保存)":"(手動保存)"}`;
     const item = document.createElement("div");
     item.className = "backup-item";
-    item.innerHTML = `<div class="info">${label}<small>復元すると名簿・特例日・集計期間設定が入れ替わります</small></div><button data-duty-restore="${doc.id}">復元</button>`;
+    item.innerHTML = `<div class="info">${label}<small>復元前に内容を確認できます</small></div><div style="display:flex;gap:6px;"><button data-duty-preview="${doc.id}">プレビュー</button><button data-duty-restore="${doc.id}">復元</button></div>`;
     listEl.appendChild(item);
   });
+  listEl.querySelectorAll("[data-duty-preview]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      try{
+        const snap = await dutyBackupsCol()
+          .doc(btn.getAttribute("data-duty-preview")).get();
+        const data = snap.data() || {};
+        const names = data.roster || [];
+        const specials = data.specialDates || {};
+        const fiscal = data.fiscalPresets || [];
+
+        const specialRows = Object.keys(specials).sort().map(ds=>{
+          const x = specials[ds] || {};
+          return `<div class="special-date-row">
+            <div class="sd-date">${escapeHtml(ds)}</div>
+            <div class="sd-label">${escapeHtml(x.label || "管理日")}</div>
+          </div>`;
+        }).join("");
+
+        const fiscalRows = fiscal.map(x=>{
+          if(typeof x === "string") return escapeHtml(x);
+          if(!x || typeof x !== "object") return "";
+          const label = x.label || x.name || "集計期間";
+          const start = x.start || x.startDate || "";
+          const end = x.end || x.endDate || "";
+          return `${escapeHtml(label)}${start || end ? `（${escapeHtml(start)} ～ ${escapeHtml(end)}）` : ""}`;
+        }).filter(Boolean);
+
+        listEl.innerHTML = `
+          <div class="modal-sub">内容確認のみです。まだ復元していません。</div>
+
+          <div class="log-section-title">名簿（${names.length}名）</div>
+          <div style="font-size:13px;line-height:1.8;margin-bottom:14px;">
+            ${names.length ? names.map(escapeHtml).join("・") : "名簿なし"}
+          </div>
+
+          <div class="log-section-title">特例日（${Object.keys(specials).length}件）</div>
+          ${specialRows || '<div class="empty-note">特例日なし</div>'}
+
+          <div class="log-section-title" style="margin-top:14px;">集計期間設定（${fiscalRows.length}件）</div>
+          <div style="font-size:13px;line-height:1.8;">
+            ${fiscalRows.length ? fiscalRows.join("<br>") : "集計期間設定なし"}
+          </div>
+
+          <button class="modal-close" id="dutyPreviewBack" style="margin-top:14px;">一覧に戻る</button>
+        `;
+        document.getElementById("dutyPreviewBack")
+          .addEventListener("click", renderDutyBackupListPage);
+      }catch(e){
+        toastFail("当番バックアップのプレビュー", e);
+      }
+    });
+  });
+
   listEl.querySelectorAll("[data-duty-restore]").forEach(btn=>{
     btn.addEventListener("click", async ()=>{
       if(!confirm("このバックアップの内容で復元します。今の名簿・特例日・集計期間設定は上書きされます。よろしいですか？")) return;
@@ -4154,6 +4315,74 @@ function labelForDate(dateStr){
   if(isWeekend(d)) return d.getDay()===0 ? "日曜" : "土曜";
   return "";
 }
+
+
+/* ---- 共通ダイヤル式日付ピッカー ---- */
+let atlasDateWheelResolve = null;
+
+function atlasDaysInMonth(y,m){
+  return new Date(y,m,0).getDate();
+}
+
+function atlasFillDateWheelDays(preferred){
+  const y = parseInt(document.getElementById("dateWheelYear").value,10);
+  const m = parseInt(document.getElementById("dateWheelMonth").value,10);
+  const dSel = document.getElementById("dateWheelDay");
+  const max = atlasDaysInMonth(y,m);
+  const keep = Math.min(parseInt(preferred || dSel.value || 1,10), max);
+  dSel.innerHTML = Array.from({length:max},(_,i)=>
+    `<option value="${i+1}">${i+1}</option>`
+  ).join("");
+  dSel.value = String(keep);
+}
+
+function atlasPickDateWheel(initialDate,title){
+  return new Promise(resolve=>{
+    const now = new Date();
+    const parts = (initialDate || "").split("-").map(Number);
+    const iy = parts[0] || now.getFullYear();
+    const im = parts[1] || now.getMonth()+1;
+    const id = parts[2] || now.getDate();
+
+    const ySel = document.getElementById("dateWheelYear");
+    const mSel = document.getElementById("dateWheelMonth");
+
+    ySel.innerHTML = Array.from({length:15},(_,i)=>iy-5+i)
+      .map(y=>`<option value="${y}">${y}</option>`).join("");
+    mSel.innerHTML = Array.from({length:12},(_,i)=>
+      `<option value="${i+1}">${i+1}</option>`
+    ).join("");
+
+    ySel.value = String(iy);
+    mSel.value = String(im);
+    atlasFillDateWheelDays(id);
+    document.getElementById("dateWheelDay").value =
+      String(Math.min(id,atlasDaysInMonth(iy,im)));
+
+    document.getElementById("dateWheelTitle").textContent = title || "日付を選択";
+    document.getElementById("dateWheelModal").classList.add("show");
+    atlasDateWheelResolve = resolve;
+  });
+}
+
+function atlasCloseDateWheel(value){
+  document.getElementById("dateWheelModal").classList.remove("show");
+  const r = atlasDateWheelResolve;
+  atlasDateWheelResolve = null;
+  if(r) r(value);
+}
+
+document.getElementById("dateWheelYear").addEventListener("change",()=>atlasFillDateWheelDays());
+document.getElementById("dateWheelMonth").addEventListener("change",()=>atlasFillDateWheelDays());
+
+document.getElementById("dateWheelOk").addEventListener("click",()=>{
+  const y = document.getElementById("dateWheelYear").value;
+  const m = pad2(parseInt(document.getElementById("dateWheelMonth").value,10));
+  const d = pad2(parseInt(document.getElementById("dateWheelDay").value,10));
+  atlasCloseDateWheel(`${y}-${m}-${d}`);
+});
+
+document.getElementById("dateWheelCancel").addEventListener("click",()=>atlasCloseDateWheel(null));
 
 /* ---- 希望表の入力締切 ---- */
 let prefDeadline = null; // { date:"YYYY-MM-DD", time:"HH:MM"|null } | null(未設定=常に受付中)
@@ -4731,24 +4960,17 @@ async function renderPrefPanel(el, skipReload){
   const prefDeadlineBtnEl = document.getElementById("prefDeadlineBtn");
   if(prefDeadlineBtnEl) prefDeadlineBtnEl.addEventListener("click", async ()=>{
     if(!unlockAdmin()) return;
-    const dateVal = prompt(
-      "締切の日付を「年-月-日」の形式で入力してください(例: 2026-3-25)\n空欄でOKすると締切を解除します",
-      prefDeadline ? prefDeadline.date : ""
-    );
-    if(dateVal===null) return;
-    const trimmed = dateVal.trim();
-    if(!trimmed){
+    if(prefDeadline && confirm("現在の締切を解除しますか？\n「キャンセル」を選ぶと日付変更へ進みます。")){
       await savePrefDeadline(null);
       showToast("締切を解除しました");
       renderPrefPanel(el);
       return;
     }
-    const parts = trimmed.split("-").map(s=>parseInt(String(s).trim(),10));
-    const y=parts[0], m=parts[1], dd=parts[2];
-    if(isNaN(y)||isNaN(m)||isNaN(dd)||m<1||m>12||dd<1||dd>31){
-      showToast("「年-月-日」の形式で入力してください(例: 2026-3-25)"); return;
-    }
-    const dateStr = `${y}-${pad2(m)}-${pad2(dd)}`;
+    const dateStr = await atlasPickDateWheel(
+      prefDeadline ? prefDeadline.date : todayStr,
+      "希望表の締切日"
+    );
+    if(dateStr===null) return;
     const timeVal = prompt(
       "締切の時刻を「時:分」の24時間表記で入力してください(例: 18:00)\n空欄でOKすると23:59になります",
       prefDeadline && prefDeadline.time ? prefDeadline.time : ""
@@ -4776,12 +4998,24 @@ function openSpecialDateModal(){
   const formEl = document.getElementById("specialDateForm");
   formEl.innerHTML = `
     <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
-      <input type="date" id="sdNewDate" style="flex:1; min-width:140px; border:1px solid var(--line); border-radius:10px; padding:9px;">
+      <input type="hidden" id="sdNewDate"><button type="button" id="sdDatePickBtn" style="flex:1; min-width:140px; border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:10px; padding:9px 12px; font-weight:700;">📅 日付を選択</button>
       <input type="text" id="sdNewLabel" placeholder="名前(例: お盆)" style="flex:1; min-width:110px; border:1px solid var(--line); border-radius:10px; padding:9px;">
       <button id="sdAddBtn" style="border:none; background:var(--leaf-600); color:#fff; border-radius:10px; padding:9px 14px; font-weight:700;">追加/更新</button>
     </div>
   `;
   renderSpecialDateList();
+
+  document.getElementById("sdDatePickBtn").addEventListener("click", async ()=>{
+    const hidden = document.getElementById("sdNewDate");
+    const picked = await atlasPickDateWheel(hidden.value || todayStr, "特例日を選択");
+    if(picked){
+      hidden.value = picked;
+      const d = new Date(picked+"T00:00:00");
+      document.getElementById("sdDatePickBtn").textContent =
+        `📅 ${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+    }
+  });
+
   document.getElementById("sdAddBtn").addEventListener("click", async ()=>{
     const ds = document.getElementById("sdNewDate").value;
     if(!ds){ showToast("日付を選んでください"); return; }
@@ -5422,8 +5656,46 @@ document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
   const retryBtn = document.getElementById("appLoadingRetryBtn");
   if(retryBtn) retryBtn.addEventListener("click", ()=> window.location.reload());
 
+  let startupThemeApplied = false;
+
   const hideOverlayNow = ()=>{
     const overlay = document.getElementById("appLoadingOverlay");
+
+    // 起動直後～ロード中は必ずlightのまま。
+    // 初回だけOS設定を確認し、darkならカーテンを被せてから
+    // ホーム画面をdarkへ切り替える。これで起動時の色チラつきを避ける。
+    if(!startupThemeApplied){
+      startupThemeApplied = true;
+      let wantsDark = false;
+      try{
+        wantsDark = !!(window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches);
+      }catch(e){}
+
+      if(wantsDark){
+        const curtain = document.getElementById("themeCurtain");
+        if(curtain){
+          curtain.style.background = "#14181a";
+          curtain.style.opacity = "1";
+
+          window.setTimeout(()=>{
+            document.documentElement.dataset.theme = "dark";
+            if(overlay) overlay.classList.add("hide");
+
+            requestAnimationFrame(()=>{
+              requestAnimationFrame(()=>{
+                curtain.style.opacity = "0";
+              });
+            });
+          }, 260);
+          return;
+        }
+
+        // カーテンが無い異常系だけ即時切替
+        document.documentElement.dataset.theme = "dark";
+      }
+    }
+
     if(overlay) overlay.classList.add("hide");
   };
   // スピナー表示の代わりに「読み込みに失敗した」ことと、止まった段階を表示する。
