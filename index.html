@@ -741,7 +741,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
   white-space:nowrap;
 }
 
-  /* Startup OS-dark reveal: keep splash/loading light, then cross-fade the finished app. */
+  /* OSダーク起動時：同期処理には触れず、完成画面の見せ方だけ滑らかにする */
   body.atlas-startup-theme-transition #app{ opacity:0; }
   #app{ transition:opacity .42s cubic-bezier(.22,.61,.36,1); }
 </style>
@@ -2015,7 +2015,7 @@ async function atlasFetchDocumentQuietREST(collection,id){
     const row = (Array.isArray(rows) ? rows : []).find(x=>x && x.document && x.document.name);
     sentinelTelemetryRecord(1,0,0,row ? "fetch-document-quiet" : "fetch-document-missing-quiet");
     if(!row) return {exists:false,id,data:null};
-    return {exists:true,id,data:atlasDecodeFirestoreDocument(row.document)};
+    return {exists:true,id,data:atlasDecodeDocumentFull(row.document)};
   }finally{
     clearTimeout(timer);
   }
@@ -5679,8 +5679,8 @@ document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
       if(wantsDark){
         const curtain = document.getElementById("themeCurtain");
         if(curtain){
-          // The loading screen stays light. Cover it with the same light color first,
-          // switch the finished app to dark behind the curtain, then cross-fade.
+          // ロード画面と同じlight色で覆い、裏でdarkへ切替。
+          // Firestore/同期コードは一切変更しない。
           document.body.classList.add("atlas-startup-theme-transition");
           curtain.style.transition = "none";
           curtain.style.background = "#EEF1EC";
