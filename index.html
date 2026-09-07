@@ -1820,6 +1820,65 @@ window.addEventListener("pageshow",()=>sentinelSharedResumeCheck("pageshow"));
 window.addEventListener("focus",()=>sentinelSharedResumeCheck("focus"));
 window.addEventListener("online",()=>sentinelSharedResumeCheck("online"));
 
+
+/* ==================================================================
+   ABUSE GUARD v0.1
+   - accidental/request-flood circuit breaker for this browser instance
+   - does NOT replace App Check / Firestore Security Rules
+   - blocks only new application Firestore REST calls during cooldown
+   - SENTINEL shared transport is intentionally outside these wrappers
+   ================================================================== */
+const ABUSE_GUARD_VERSION="0.1";
+const ABUSE_GUARD_WINDOW_MS=5000;
+const ABUSE_GUARD_READ_LIMIT=30;
+const ABUSE_GUARD_WRITE_LIMIT=20;
+const ABUSE_GUARD_COOLDOWN_MS=15000;
+let abuseGuardEvents=[];
+let abuseGuardBlockedUntil=0;
+let abuseGuardTrips=0;
+
+function abuseGuardNow(){ return Date.now(); }
+function abuseGuardPrune(now){
+  const cutoff=now-ABUSE_GUARD_WINDOW_MS;
+  abuseGuardEvents=abuseGuardEvents.filter(x=>x.t>=cutoff);
+}
+function abuseGuardStatus(){
+  const now=abuseGuardNow(); abuseGuardPrune(now);
+  let reads=0,writes=0;
+  abuseGuardEvents.forEach(x=>{ reads+=x.r||0; writes+=x.w||0; });
+  return {
+    version:ABUSE_GUARD_VERSION, reads5s:reads, writes5s:writes,
+    blocked:now<abuseGuardBlockedUntil,
+    remainingMs:Math.max(0,abuseGuardBlockedUntil-now),
+    trips:abuseGuardTrips
+  };
+}
+function abuseGuardCheck(reads,writes,kind){
+  const now=abuseGuardNow();
+  if(now<abuseGuardBlockedUntil){
+    const e=new Error(`ABUSE_GUARD_COOLDOWN:${kind||"firestore"}:${abuseGuardBlockedUntil-now}ms`);
+    e.code="abuse-guard-cooldown"; throw e;
+  }
+  abuseGuardPrune(now);
+  let r=0,w=0;
+  abuseGuardEvents.forEach(x=>{r+=x.r||0;w+=x.w||0;});
+  const nr=r+(Number(reads)||0), nw=w+(Number(writes)||0);
+  if(nr>ABUSE_GUARD_READ_LIMIT || nw>ABUSE_GUARD_WRITE_LIMIT){
+    abuseGuardBlockedUntil=now+ABUSE_GUARD_COOLDOWN_MS;
+    abuseGuardEvents=[];
+    abuseGuardTrips++;
+    console.warn("[ABUSE GUARD] circuit opened", {kind,reads5s:nr,writes5s:nw,cooldownMs:ABUSE_GUARD_COOLDOWN_MS});
+    const e=new Error(`ABUSE_GUARD_TRIPPED:${kind||"firestore"}`);
+    e.code="abuse-guard-tripped"; throw e;
+  }
+  abuseGuardEvents.push({t:now,r:Number(reads)||0,w:Number(writes)||0,kind:String(kind||"firestore")});
+}
+window.ABUSE_GUARD={
+  status:abuseGuardStatus,
+  reset:()=>{abuseGuardEvents=[];abuseGuardBlockedUntil=0;},
+  config:{windowMs:ABUSE_GUARD_WINDOW_MS,readLimit:ABUSE_GUARD_READ_LIMIT,writeLimit:ABUSE_GUARD_WRITE_LIMIT,cooldownMs:ABUSE_GUARD_COOLDOWN_MS}
+};
+
 async function atlasRestCommit(writes){
   atlasRestThrowIfQuotaCooling();
   const headers=await atlasRestSecureHeaders();
@@ -1857,6 +1916,7 @@ function atlasRestDocSnap(collection,id,doc){
   };
 }
 async function atlasRestGetDocRaw(collection,id){
+  abuseGuardCheck(1,0,"atlas-get-raw");
   atlasRestThrowIfQuotaCooling();
   const headers=await atlasRestSecureHeaders();
   const url=`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(firebaseConfig.projectId)}/databases/(default)/documents/${encodeURIComponent(collection)}/${encodeURIComponent(id)}`;
@@ -1987,6 +2047,7 @@ const atlasRestDb={
   }
 };
 async function atlasFetchDocumentREST(collection,id){
+  abuseGuardCheck(1,0,"atlas-get-doc");
   const doc=await atlasRestGetDocRaw(collection,id);
   return {exists:!!doc,data:doc?atlasDecodeDocumentFull(doc):null};
 }
