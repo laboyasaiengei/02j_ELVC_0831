@@ -1379,6 +1379,10 @@ function sentinelTelemetryRecord(reads,writes,deletes,kind){
     const cutoff=Date.now()-8*24*60*60*1000;
     Object.keys(s.buckets).forEach(x=>{if(Number(x)<cutoff)delete s.buckets[x];});
     sentinelTelemetrySave(s);
+    // Actual Firestore activity is the most reliable sign that JS is awake.
+    // If the scheduled cargo has gone stale, request one debounced catch-up dispatch.
+    if(typeof sentinelSharedRequestDemandFlush==="function")
+      sentinelSharedRequestDemandFlush("firestore-activity",false);
   }catch(e){console.warn("[SENTINEL] telemetry record skipped",e);}
 }
 function sentinelTelemetryRecordCommit(writes,kind){
@@ -1421,7 +1425,7 @@ window.SENTINEL_ATLAS={
 
 
 /* ==================================================================
-   SENTINEL Shared Sync v0.4 · 1-minute buckets / 10-minute flush / SAFEFLUSH
+   SENTINEL Shared Sync v0.5 · 1-minute buckets / 10-minute flush / SAFEFLUSH + DEMAND DISPATCH
    Shared sink: Dev-CAESAR Firestore (anonymous auth + App Check)
    - local Telemetry v0.2 remains the source of truth on this device
    - every 10 minutes, only positive unsent deltas are atomically incremented
@@ -1448,6 +1452,13 @@ let sentinelSharedTimer=null;
 let sentinelSharedBusy=false;
 let sentinelSharedFirebaseApp=null;
 let sentinelSharedLastStatus={ok:false,at:0,error:"",writes:0};
+
+// v0.5 DEMAND DISPATCH: iOS/PWA may suspend timers in background.
+// Keep the 10-minute timetable, but also dispatch when real app traffic occurs
+// after the shared line has been stale for >=10 minutes, and on resume/online/focus.
+const SENTINEL_SHARED_DEMAND_DEBOUNCE_MS = 1200;
+let sentinelSharedDemandTimer=null;
+let sentinelSharedLastSuccessAt=0;
 
 function sentinelSharedLoadState(){
   try{
@@ -1666,7 +1677,9 @@ async function sentinelSharedFlush(){
     });
     if(pruned)sentinelSharedSaveState(state);
 
-    sentinelSharedLastStatus={ok:true,at:Date.now(),error:"",writes};
+    const doneAt=Date.now();
+    sentinelSharedLastStatus={ok:true,at:doneAt,error:"",writes};
+    sentinelSharedLastSuccessAt=doneAt;
     return true;
   }catch(e){
     sentinelSharedLastStatus={ok:false,at:Date.now(),error:e&&e.message?e.message:String(e),writes};
@@ -1683,6 +1696,29 @@ function sentinelSharedSchedule(){
     sentinelSharedSchedule();
   },SENTINEL_SHARED_SYNC_MS);
 }
+
+function sentinelSharedHasPending(){
+  try{return sentinelSharedDeltaPlan().plan.length>0;}catch(_){return false;}
+}
+function sentinelSharedReferenceAt(){
+  return sentinelSharedLastSuccessAt || sentinelSharedLastStatus.at || 0;
+}
+function sentinelSharedRequestDemandFlush(reason, force=false){
+  try{
+    if(!navigator.onLine || sentinelSharedBusy) return;
+    if(!sentinelSharedHasPending()) return;
+    const stale=Date.now()-sentinelSharedReferenceAt()>=SENTINEL_SHARED_SYNC_MS;
+    if(!force && !stale) return;
+    if(sentinelSharedDemandTimer) return;
+    sentinelSharedDemandTimer=setTimeout(async()=>{
+      sentinelSharedDemandTimer=null;
+      if(!navigator.onLine || sentinelSharedBusy || !sentinelSharedHasPending()) return;
+      console.info("[SENTINEL] demand dispatch",reason||"activity");
+      await sentinelSharedFlush();
+      sentinelSharedSchedule();
+    },SENTINEL_SHARED_DEMAND_DEBOUNCE_MS);
+  }catch(e){console.warn("[SENTINEL] demand dispatch skipped",e);}
+}
 window.SENTINEL_SHARED={
   appId:SENTINEL_SHARED_APP_ID,
   flush:sentinelSharedFlush,
@@ -1691,11 +1727,17 @@ window.SENTINEL_SHARED={
 };
 sentinelSharedEnsureMinuteBaseline();
 setTimeout(()=>sentinelSharedFlush().finally(sentinelSharedSchedule),15000);
+
+function sentinelSharedResumeCheck(reason){
+  if(document.visibilityState!=="visible") return;
+  sentinelSharedRequestDemandFlush(reason,true);
+}
 document.addEventListener("visibilitychange",()=>{
-  if(document.visibilityState==="visible" && Date.now()-(sentinelSharedLastStatus.at||0)>SENTINEL_SHARED_SYNC_MS){
-    sentinelSharedFlush().catch(()=>{});
-  }
+  if(document.visibilityState==="visible") sentinelSharedResumeCheck("visibility");
 });
+window.addEventListener("pageshow",()=>sentinelSharedResumeCheck("pageshow"));
+window.addEventListener("focus",()=>sentinelSharedResumeCheck("focus"));
+window.addEventListener("online",()=>sentinelSharedResumeCheck("online"));
 
 async function atlasRestCommit(writes){
   atlasRestThrowIfQuotaCooling();
