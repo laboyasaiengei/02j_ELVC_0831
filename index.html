@@ -420,6 +420,9 @@
     position:fixed; inset:0; background:rgba(35,50,39,.45); z-index:70;
     display:none; align-items:flex-end; justify-content:center;
   }
+  /* 共通日付ダイヤルは、呼び出し元の管理モーダルより常に前面へ表示する。
+     特例日モーダルを閉じないとダイヤルが見えない重なり順の不具合を防ぐ。 */
+  #dateWheelModal{ z-index:90; }
   .modal-overlay.show{display:flex;}
   .modal-sheet{
     background:#fff; width:100%; max-width:640px; border-radius:18px 18px 0 0;
@@ -2398,13 +2401,14 @@ function circledNumber(n){
     if(printBtn) printBtn.style.visibility = "";
     const imgData = canvas.toDataURL("image/png");
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation:"portrait", unit:"pt", format:"a4" });
+    const pdf = new jsPDF({ orientation:"landscape", unit:"pt", format:"a4" });
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const ratio = Math.min(pageWidth/canvas.width, pageHeight/canvas.height);
+    const margin = 28;
+    const ratio = Math.min((pageWidth-margin*2)/canvas.width, (pageHeight-margin*2)/canvas.height);
     const imgW = canvas.width*ratio;
     const imgH = canvas.height*ratio;
-    pdf.addImage(imgData, "PNG", (pageWidth-imgW)/2, 30, imgW, imgH);
+    pdf.addImage(imgData, "PNG", (pageWidth-imgW)/2, (pageHeight-imgH)/2, imgW, imgH);
     const fileLabel = `${target.dataset.year}年${target.dataset.month}月`;
     pdf.save(`${fileLabel}_当番カレンダー.pdf`);
     showToast("PDFを保存しました");
@@ -5156,7 +5160,10 @@ async function renderCalendarPanel(el){
     months.forEach((m, mIdx)=>{
     const { list } = monthDates(m.year, m.month);
     html += `<div class="cal-month-block" id="calMonthBlock${mIdx}" data-year="${m.year}" data-month="${m.month+1}">`;
-        html += `<div class="cal-month-title">${m.year}年 ${m.month+1}月</div>`;
+        html += `<div class="cal-month-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <span>${m.year}年 ${m.month+1}月</span>
+      <button type="button" class="lock-btn" data-print-month="${mIdx}" style="font-size:11px;font-weight:600;color:var(--bark);background:var(--leaf-100);border:none;border-radius:999px;padding:5px 11px;cursor:pointer;white-space:nowrap;">PDF保存</button>
+    </div>`;
     html += `<div class="cal-grid">`;
     ["日","月","火","水","木","金","土"].forEach(d=>{ html += `<div class="cal-dow">${d}</div>`; });
     const firstDow = new Date(m.year,m.month,1).getDay();
@@ -5193,6 +5200,12 @@ async function renderCalendarPanel(el){
   }
   el.querySelectorAll("[data-cal-date]").forEach(cell=>{
     cell.addEventListener("click", ()=>openCalendarDayModal(cell.getAttribute("data-cal-date")));
+  });
+  el.querySelectorAll("[data-print-month]").forEach(btn=>{
+    btn.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      downloadCalendarMonthPdf(Number(btn.getAttribute("data-print-month")));
+    });
   });
 }
   async function openMonthDataModal(){
@@ -5282,9 +5295,16 @@ async function openCalendarDayModal(ds){
       });
     });
 
-    // この日に当番・すでに割り当て済みの人だけを候補にする。優先希望の人を先頭に並べる
-    const pickList = roster.filter(n=>wanterNames.includes(n) || assigned.includes(n))
-      .sort((a,b)=>(prio[b]?1:0)-(prio[a]?1:0));
+    // 初回割り当ては従来どおり希望者だけを候補にする。
+    // すでに担当が決まっている日の「後からの担当変更」では、希望の有無にかかわらず名簿全員を候補にする。
+    // 希望者・優先希望者は上位に表示して、従来の希望情報も判断材料として残す。
+    const isReassignment = assigned.length > 0;
+    const pickList = (isReassignment ? roster.slice() : roster.filter(n=>wanterNames.includes(n)))
+      .sort((a,b)=>{
+        const ap = prio[a]?2:(wanterNames.includes(a)?1:0);
+        const bp = prio[b]?2:(wanterNames.includes(b)?1:0);
+        return bp-ap;
+      });
 
     infoHtml += pickList.length ? pickList.map(n=>`
       <div class="roster-check-row">
