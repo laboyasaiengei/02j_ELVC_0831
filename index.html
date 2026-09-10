@@ -1094,7 +1094,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 <script>
 /* SENTINEL Central Diagnostic v0.2 — production automatic reporting; no user-entered data */
 (function(){
-const ATLAS_APP_VERSION='1.10.2';
+const ATLAS_APP_VERSION='1.10.3';
 const APP='atlas-prod', VER=ATLAS_APP_VERSION, CFG={apiKey:"AIzaSyCZOI7sTRGn2xw6VWPkXblb8KW4TM_BcwU",authDomain:"dev-caesar.firebaseapp.com",projectId:"dev-caesar",storageBucket:"dev-caesar.firebasestorage.app",messagingSenderId:"339298618142",appId:"1:339298618142:web:69e5af56d4fb66840f170f"}, SITE="6LffvagtAAAAAMYORF3VlYDdUBemsfqunrxkArCo";
 const QK="sentinelDiagQueue.v0.2."+APP,RK="sentinelDiagRate.v0.2."+APP,origFetch=window.fetch.bind(window),recent=new Map();let app,auth,check,busy=false;
 const clean=(v,n)=>String(v==null?"":v).replace(/[\r\n\t]+/g," ").slice(0,n);
@@ -1942,18 +1942,31 @@ async function atlasRestGetDocRaw(collection,id){
   abuseGuardCheck(1,0,"atlas-get-raw");
   atlasRestThrowIfQuotaCooling();
   const headers=await atlasRestSecureHeaders();
-  const url=`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(firebaseConfig.projectId)}/databases/(default)/documents/${encodeURIComponent(collection)}/${encodeURIComponent(id)}`;
-  const res=await fetch(url,{headers,cache:"no-store"});
-  if(res.status===404){
-    atlasRestClearQuotaCooldown();
-    sentinelTelemetryRecord(1,0,0,"get-missing");
-    return null;
-  }
+
+  // A direct document GET returns HTTP 404 when the document has not been
+  // created yet.  ATLAS treats that state as a normal "no data yet" case,
+  // so use runQuery with an exact __name__ match instead.  A missing document
+  // then returns HTTP 200 with no document, while genuine HTTP failures remain
+  // visible to SENTINEL.
+  const sq={
+    from:[{collectionId:collection}],
+    where:{fieldFilter:{
+      field:{fieldPath:"__name__"},
+      op:"EQUAL",
+      value:{referenceValue:atlasRestDocName(collection,String(id))}
+    }},
+    limit:1
+  };
+  const url=`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(firebaseConfig.projectId)}/databases/(default)/documents:runQuery`;
+  const res=await fetch(url,{method:"POST",headers,body:JSON.stringify({structuredQuery:sq}),cache:"no-store"});
   const raw=await res.text();
   if(!res.ok) throw atlasRestHttpError("REST GET",res,raw);
   atlasRestClearQuotaCooldown();
-  sentinelTelemetryRecord(1,0,0,"get-document");
-  return raw?JSON.parse(raw):null;
+
+  const rows=raw?JSON.parse(raw):[];
+  const hit=(Array.isArray(rows)?rows:[]).find(r=>r&&r.document);
+  sentinelTelemetryRecord(1,0,0,hit?"get-document":"get-missing");
+  return hit?hit.document:null;
 }
 function atlasRestQueryOp(op){
   return ({
