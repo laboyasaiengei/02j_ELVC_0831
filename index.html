@@ -1094,7 +1094,8 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 <script>
 /* SENTINEL Central Diagnostic v0.2 — production automatic reporting; no user-entered data */
 (function(){
-const APP='atlas-prod', VER='ATLAS PROD 2026-09-10', CFG={apiKey:"AIzaSyCZOI7sTRGn2xw6VWPkXblb8KW4TM_BcwU",authDomain:"dev-caesar.firebaseapp.com",projectId:"dev-caesar",storageBucket:"dev-caesar.firebasestorage.app",messagingSenderId:"339298618142",appId:"1:339298618142:web:69e5af56d4fb66840f170f"}, SITE="6LffvagtAAAAAMYORF3VlYDdUBemsfqunrxkArCo";
+const ATLAS_APP_VERSION='1.10.2';
+const APP='atlas-prod', VER=ATLAS_APP_VERSION, CFG={apiKey:"AIzaSyCZOI7sTRGn2xw6VWPkXblb8KW4TM_BcwU",authDomain:"dev-caesar.firebaseapp.com",projectId:"dev-caesar",storageBucket:"dev-caesar.firebasestorage.app",messagingSenderId:"339298618142",appId:"1:339298618142:web:69e5af56d4fb66840f170f"}, SITE="6LffvagtAAAAAMYORF3VlYDdUBemsfqunrxkArCo";
 const QK="sentinelDiagQueue.v0.2."+APP,RK="sentinelDiagRate.v0.2."+APP,origFetch=window.fetch.bind(window),recent=new Map();let app,auth,check,busy=false;
 const clean=(v,n)=>String(v==null?"":v).replace(/[\r\n\t]+/g," ").slice(0,n);
 function load(k,d){try{const x=JSON.parse(localStorage.getItem(k)||"");return x||d}catch(_){return d}} function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(_){}}
