@@ -1091,7 +1091,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 <script>
 /* SENTINEL Central Diagnostic v0.2 — production automatic reporting; no user-entered data */
 (function(){
-const ATLAS_APP_VERSION='1.10.4';
+const ATLAS_APP_VERSION='1.10.5';
 const APP='atlas-prod', VER=ATLAS_APP_VERSION, CFG={apiKey:"AIzaSyCZOI7sTRGn2xw6VWPkXblb8KW4TM_BcwU",authDomain:"dev-caesar.firebaseapp.com",projectId:"dev-caesar",storageBucket:"dev-caesar.firebasestorage.app",messagingSenderId:"339298618142",appId:"1:339298618142:web:69e5af56d4fb66840f170f"}, SITE="6LffvagtAAAAAMYORF3VlYDdUBemsfqunrxkArCo";
 const QK="sentinelDiagQueue.v0.2."+APP,RK="sentinelDiagRate.v0.2."+APP,origFetch=window.fetch.bind(window),recent=new Map();let app,auth,check,busy=false;
 const clean=(v,n)=>String(v==null?"":v).replace(/[\r\n\t]+/g," ").slice(0,n);
@@ -1109,13 +1109,47 @@ function watch(u){u=String(u||"");return /(?:firestore|securetoken|identitytoolk
 const FS_LOC="Firestore REST",FS_RETRY_DELAY_MS=400,FS_MIN_CONSECUTIVE=2,FS_MIN_DURATION_MS=30000,FS_REPORT_COOLDOWN_MS=3600000;
 let fsFailCount=0,fsFirstFailAt=0,fsLastReportedAt=0;
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+/* Firestore RESTの401(認証エラー)専用の再認証フック。
+   このSENTINEL診断層はATLAS側の認証内部(IDトークンの持ち方など)を知らないため、
+   直接そこへ手を入れる代わりに、アプリ側が「新しいIDトークンを取得して返す関数」を
+   ここに登録する形にする。未登録なら何もせず従来通り即通報する（安全側デフォルト）。 */
+window.__sentinelFsReauth = window.__sentinelFsReauth || null;
+function cloneInitWithAuth(init,token){
+  const next=Object.assign({},init||{});
+  const h=next.headers;
+  if(h instanceof Headers){
+    const nh=new Headers(h); nh.set("Authorization","Bearer "+token); next.headers=nh;
+  }else{
+    next.headers=Object.assign({},h||{},{Authorization:"Bearer "+token});
+  }
+  return next;
+}
+/* 401が来た時だけ実行する救済パス:
+   1) 登録済みの再認証フックでIDトークンを取り直す
+   2) 同じリクエストを1回だけ、新トークンで再試行する
+   3) 成功すればこの401はSENTINELに送らない(=呼び出し元にはそのまま成功レスポンスを返す)
+   4) フック未登録・再認証失敗・再試行も401なら、元の401レスポンスのまま通常の通報処理に渡す */
+async function retryFsAuthOnce(input,init,res401){
+  if(typeof window.__sentinelFsReauth!=="function") return res401;
+  try{
+    const newToken=await window.__sentinelFsReauth();
+    if(!newToken) return res401;
+    const r2=await origFetch(input,cloneInitWithAuth(init,newToken));
+    return r2;
+  }catch(_e){
+    return res401; // 再認証・再試行自体が失敗 → 元の401のまま扱う
+  }
+}
 window.fetch=async function(input,init){
   const u=typeof input==="string"?input:(input&&input.url)||"";
   const isFsTarget=watch(u)&&loc(u)===FS_LOC;
   try{
-    const r=await origFetch(input,init);
+    let r=await origFetch(input,init);
+    if(isFsTarget&&r.status===401){
+      r=await retryFsAuthOnce(input,init,r);
+    }
     if(watch(u)&&!r.ok)put("http-error",loc(u),r.status,(init&&init.method)||"GET");
-    if(isFsTarget){fsFailCount=0;fsFirstFailAt=0} // 実通信成功=再接続確認。失敗streakをリセット
+    if(isFsTarget&&r.ok){fsFailCount=0;fsFirstFailAt=0} // 実通信成功=再接続確認。失敗streakをリセット
     return r;
   }catch(e){
     if(!isFsTarget){
@@ -1330,6 +1364,16 @@ async function atlasRestSecureHeaders(){
   headers["X-Firebase-AppCheck"]=await atlasGetAppCheckToken();
   return headers;
 }
+/* SENTINEL診断層(先頭の window.fetch ラッパー)に、401時の再認証を委譲するための登録。
+   Firestore RESTが401を返した時にSENTINEL側からこの関数が呼ばれる。
+   ここで古いIDトークンを破棄して取り直し、新しいIDトークンを返す。
+   SENTINEL側はこれを使って同じリクエストを1回だけ再試行し、
+   成功すれば(=単なるトークン失効だった場合)重大エラーとしては通報しない。 */
+window.__sentinelFsReauth=async function(){
+  atlasRestIdToken="";
+  await atlasRestAuthRequest();
+  return atlasRestIdToken||null;
+};
 function atlasRestDocName(collection,id){
   return `projects/${firebaseConfig.projectId}/databases/(default)/documents/${collection}/${id}`;
 }
