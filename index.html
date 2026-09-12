@@ -1091,7 +1091,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 <script>
 /* SENTINEL Central Diagnostic v0.2 — production automatic reporting; no user-entered data */
 (function(){
-const ATLAS_APP_VERSION='1.10.5';
+const ATLAS_APP_VERSION='1.10.6';
 const APP='atlas-prod', VER=ATLAS_APP_VERSION, CFG={apiKey:"AIzaSyCZOI7sTRGn2xw6VWPkXblb8KW4TM_BcwU",authDomain:"dev-caesar.firebaseapp.com",projectId:"dev-caesar",storageBucket:"dev-caesar.firebasestorage.app",messagingSenderId:"339298618142",appId:"1:339298618142:web:69e5af56d4fb66840f170f"}, SITE="6LffvagtAAAAAMYORF3VlYDdUBemsfqunrxkArCo";
 const QK="sentinelDiagQueue.v0.2."+APP,RK="sentinelDiagRate.v0.2."+APP,origFetch=window.fetch.bind(window),recent=new Map();let app,auth,check,busy=false;
 const clean=(v,n)=>String(v==null?"":v).replace(/[\r\n\t]+/g," ").slice(0,n);
@@ -4864,10 +4864,40 @@ function monthDates(year,month){ // month: 0-11
   return { first, list };
 }
 
+/* ---- 当番管理: 初回表示時にだけ関連データをまとめて取得 ----
+   roster / adminPassword(adminPasswordCurrent) / prefDeadline / fiscalPresets は
+   当番管理内でしか参照されないため、栽培管理しか使わないユーザーでは
+   Firestoreの読み取りを一切発生させない。
+   （specialDates・restorePasscodeCurrentは栽培管理側（当番バナー／復元）
+     でも使うため、こちらには含めず従来通り起動時の初期読込のまま） */
+let atlasDutyDataLoaded = false;
+let atlasDutyDataLoadingPromise = null;
+function ensureDutyDataLoaded(){
+  if(atlasDutyDataLoaded) return Promise.resolve();
+  if(atlasDutyDataLoadingPromise) return atlasDutyDataLoadingPromise;
+  atlasDutyDataLoadingPromise = Promise.all([
+    loadRoster(),
+    loadAdminPassword(),
+    loadPrefDeadline(),
+    loadFiscalPresets()
+  ]).then(()=>{
+    atlasDutyDataLoaded = true;
+  }).finally(()=>{
+    atlasDutyDataLoadingPromise = null;
+  });
+  return atlasDutyDataLoadingPromise;
+}
+
 /* ---- 当番管理: 全体の描画振り分け ---- */
 let dutySub = "pref";
 async function renderDutyPanel(){
   const el = document.getElementById("dutyMain");
+  if(!atlasDutyDataLoaded){
+    // 当番管理を初めて開いた時だけ発生するデータ取得。一瞬空白になるのを避け、
+    // 他のパネル読み込みと同じ「読み込み中…」表示を出しておく。
+    el.innerHTML = `<div class="empty-note">読み込み中…</div>`;
+  }
+  await ensureDutyDataLoaded();
   const topActions = document.getElementById("dutyTopActions");
   if(topActions) topActions.style.display = isAdmin ? "" : "none";
   if(dutySub==="pref"){
@@ -5902,9 +5932,12 @@ document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
         if(settled) return;
         setupConnectionBanner();
         setLoadingStep("各種データを読み込み中…" + attemptTag);
-        await Promise.all([loadRoster(), loadSpecialDates(), loadAdminPassword(), loadRestorePasscode(), loadPrefDeadline()]);
-        if(settled) return;
-        await loadFiscalPresets();
+        // 当番管理専用のroster/adminPassword/prefDeadline/fiscalPresetsは、当番管理を
+        // 開く際にensureDutyDataLoaded()でまとめて取得する（栽培管理のみのユーザーの
+        // Firestore読み取りを削減するため）。
+        // specialDates（栽培管理の「今日の当番」バナー判定用）とrestorePasscode
+        // （栽培管理の「復元」ボタン用）は栽培管理でも必要なため、従来通り初期化時に取得する。
+        await Promise.all([loadSpecialDates(), loadRestorePasscode()]);
         if(settled) return;
         setLoadingStep("画面を準備中…" + attemptTag);
         await loadTab(currentTab);
