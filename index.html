@@ -1091,7 +1091,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 <script>
 /* SENTINEL Central Diagnostic v0.2 — production automatic reporting; no user-entered data */
 (function(){
-const ATLAS_APP_VERSION='1.10.7';
+const ATLAS_APP_VERSION='1.1.8';
 const APP='atlas-prod', VER=ATLAS_APP_VERSION, CFG={apiKey:"AIzaSyCZOI7sTRGn2xw6VWPkXblb8KW4TM_BcwU",authDomain:"dev-caesar.firebaseapp.com",projectId:"dev-caesar",storageBucket:"dev-caesar.firebasestorage.app",messagingSenderId:"339298618142",appId:"1:339298618142:web:69e5af56d4fb66840f170f"}, SITE="6LffvagtAAAAAMYORF3VlYDdUBemsfqunrxkArCo";
 const QK="sentinelDiagQueue.v0.2."+APP,RK="sentinelDiagRate.v0.2."+APP,origFetch=window.fetch.bind(window),recent=new Map();let app,auth,check,busy=false;
 const clean=(v,n)=>String(v==null?"":v).replace(/[\r\n\t]+/g," ").slice(0,n);
@@ -1179,7 +1179,7 @@ async function ready(){if(auth&&check)return;if(typeof firebase==="undefined"||!
 async function send(e){await ready();const u=auth.currentUser||(await auth.signInAnonymously()).user,id=await u.getIdToken(),ac=await check.getToken(false),rid=APP+"_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,8);const f={appId:{stringValue:e.appId},occurredAt:{timestampValue:e.time},appVersion:{stringValue:e.appVersion},online:{booleanValue:!!e.online},category:{stringValue:e.category},location:{stringValue:e.location},detail:{stringValue:e.detail}};if(e.httpStatus)f.httpStatus={integerValue:String(e.httpStatus)};const h={Authorization:"Bearer "+id,"Content-Type":"application/json"};if(ac&&ac.token)h["X-Firebase-AppCheck"]=ac.token;const r=await origFetch("https://firestore.googleapis.com/v1/projects/dev-caesar/databases/(default)/documents/sentinelDiagnostics?documentId="+encodeURIComponent(rid),{method:"POST",headers:h,body:JSON.stringify({fields:f}),cache:"no-store"});if(!r.ok)throw Error("diagnostic HTTP "+r.status)}
 async function flush(){if(busy||navigator.onLine===false)return;busy=true;try{let q=load(QK,[]);while(q.length){try{await send(q[0]);q.shift();save(QK,q)}catch(_){break}}}finally{busy=false}}
 window.addEventListener("error",e=>{if(e&&e.target&&e.target!==window){put("resource-load-error","startup/resource",0,e.target.tagName||"resource")}else put("javascript-error","window",0,e&&e.message||"unknown error")},true);
-window.addEventListener("unhandledrejection",e=>{const r=e&&e.reason;put("unhandled-rejection","promise",Number(r&&r.httpStatus)||0,r&&r.name||r&&r.code||"rejection")});window.addEventListener("online",flush);window.addEventListener("load",()=>setTimeout(flush,1200),{once:true});setTimeout(flush,3500);
+window.addEventListener("unhandledrejection",e=>{const r=e&&e.reason;put("unhandled-rejection","promise",Number(r&&r.httpStatus)||0,r&&r.name||r&&r.code||"rejection")});window.addEventListener("online",flush);window.addEventListener("load",()=>setTimeout(()=>{flush();ready().catch(()=>{})},1200),{once:true});setTimeout(flush,3500);
 })();
 </script>
 <script>
