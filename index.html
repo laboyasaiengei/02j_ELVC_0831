@@ -1091,7 +1091,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 <script>
 /* SENTINEL Central Diagnostic v0.2 — production automatic reporting; no user-entered data */
 (function(){
-const ATLAS_APP_VERSION='1.10.6';
+const ATLAS_APP_VERSION='1.10.7';
 const APP='atlas-prod', VER=ATLAS_APP_VERSION, CFG={apiKey:"AIzaSyCZOI7sTRGn2xw6VWPkXblb8KW4TM_BcwU",authDomain:"dev-caesar.firebaseapp.com",projectId:"dev-caesar",storageBucket:"dev-caesar.firebasestorage.app",messagingSenderId:"339298618142",appId:"1:339298618142:web:69e5af56d4fb66840f170f"}, SITE="6LffvagtAAAAAMYORF3VlYDdUBemsfqunrxkArCo";
 const QK="sentinelDiagQueue.v0.2."+APP,RK="sentinelDiagRate.v0.2."+APP,origFetch=window.fetch.bind(window),recent=new Map();let app,auth,check,busy=false;
 const clean=(v,n)=>String(v==null?"":v).replace(/[\r\n\t]+/g," ").slice(0,n);
@@ -4436,10 +4436,36 @@ function japaneseHolidayName(d){
 
 /* ---- 特別な日(追加の管理日) ---- */
 let specialDates = {}; // { "YYYY-MM-DD": {custom:bool, points:number, label:string} }
-function specialDatesCol(){ return db.collection("special_dates"); }
+/* ---- 特別な日: 読み書きともにREST経由(atlasRestDb)に統一 ----
+   以前は書き込み(保存・削除)だけFirebase SDKのまま残していたが、
+   OSアップデートへの耐性を優先し、読み込み・書き込みとも完全にREST化する。 */
+function specialDatesCol(){ return atlasRestDb.collection("special_dates"); }
 async function loadSpecialDates(){
   try{
     const snap = await withDbTimeout(specialDatesCol().get(), "specialDates-get-timeout");
+    const map={};
+    snap.forEach(doc=>{ map[doc.id]=doc.data(); });
+    specialDates = map;
+  }catch(e){ /* 読み込み失敗時は空のまま */ }
+}
+/* ---- 特別な日: 起動時は「過去HISTORY_DAYS日〜今日」だけに絞って取得 ----
+   栽培管理側でisDutyDate()が必要とするのはこの範囲だけ(日付chip・当番バナー)。
+   特例日一覧の管理など全件が必要な当番管理側は、ensureDutyDataLoaded()で
+   別途loadSpecialDates()(全件)を呼んで上書きする。
+   （loadCalendarRangeと同じ__name__範囲検索の考え方） */
+async function loadSpecialDatesRecent(){
+  try{
+    const days = getLastNDays(HISTORY_DAYS);
+    const sorted = days.slice().sort();
+    const startId = sorted[0];
+    const endId = sorted[sorted.length-1];
+    const snap = await withDbTimeout(
+      specialDatesCol()
+        .where("__name__", ">=", startId)
+        .where("__name__", "<=", endId)
+        .get(),
+      "specialDatesRecent-get-timeout"
+    );
     const map={};
     snap.forEach(doc=>{ map[doc.id]=doc.data(); });
     specialDates = map;
@@ -4868,8 +4894,11 @@ function monthDates(year,month){ // month: 0-11
    roster / adminPassword(adminPasswordCurrent) / prefDeadline / fiscalPresets は
    当番管理内でしか参照されないため、栽培管理しか使わないユーザーでは
    Firestoreの読み取りを一切発生させない。
-   （specialDates・restorePasscodeCurrentは栽培管理側（当番バナー／復元）
-     でも使うため、こちらには含めず従来通り起動時の初期読込のまま） */
+   （restorePasscodeCurrentは栽培管理側の「復元」ボタンでも使うため、
+     こちらには含めず従来通り起動時の初期読込のまま）
+   specialDatesは起動時に「直近HISTORY_DAYS日分」だけ読み込み済み(loadSpecialDatesRecent)
+   だが、当番管理側(特例日一覧の管理・希望表/カレンダーの月range)は全件が必要なため、
+   当番管理を開いた時に限り、ここでloadSpecialDates()(全件)に差し替える。 */
 let atlasDutyDataLoaded = false;
 let atlasDutyDataLoadingPromise = null;
 function ensureDutyDataLoaded(){
@@ -4879,7 +4908,8 @@ function ensureDutyDataLoaded(){
     loadRoster(),
     loadAdminPassword(),
     loadPrefDeadline(),
-    loadFiscalPresets()
+    loadFiscalPresets(),
+    loadSpecialDates()
   ]).then(()=>{
     atlasDutyDataLoaded = true;
   }).finally(()=>{
@@ -5937,7 +5967,7 @@ document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
         // Firestore読み取りを削減するため）。
         // specialDates（栽培管理の「今日の当番」バナー判定用）とrestorePasscode
         // （栽培管理の「復元」ボタン用）は栽培管理でも必要なため、従来通り初期化時に取得する。
-        await Promise.all([loadSpecialDates(), loadRestorePasscode()]);
+        await Promise.all([loadSpecialDatesRecent(), loadRestorePasscode()]);
         if(settled) return;
         setLoadingStep("画面を準備中…" + attemptTag);
         await loadTab(currentTab);
