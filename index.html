@@ -242,6 +242,15 @@
     border-radius:999px; padding:2px 8px;
     white-space:pre-wrap; word-break:break-word;
   }
+  .section-notice{
+    display:inline-flex; align-items:center; gap:4px;
+    font-family:"Inter","Noto Sans JP",sans-serif;
+    font-size:11px; line-height:1.4; font-weight:600;
+    color:#5e4f00; background:#fff7c2; border:1px solid #e3c73a;
+    border-radius:999px; padding:2px 8px;
+    white-space:pre-wrap; word-break:break-word;
+  }
+  .section-card.has-notice{border-color:#e0b400;}
   .section-card.has-alert{border-color:var(--alert);}
   .section-count{font-size:12px; color:var(--ink-soft); font-weight:600; white-space:nowrap;}
   .icon-btn{width:34px; height:34px; border:none; background:none; display:flex; align-items:center; justify-content:center; color:#b9ab98; cursor:pointer; border-radius:8px; flex:0 0 auto;}
@@ -665,6 +674,8 @@ html[data-theme="dark"] .icon-btn{ color:#8d9a8f; }
 html[data-theme="dark"] .icon-btn:active{ background:var(--surface-2); }
 html[data-theme="dark"] .move-stack button{ color:#8d9a8f; }
 html[data-theme="dark"] .move-stack button:active{ background:var(--surface-2); }
+html[data-theme="dark"] .section-card.has-notice{ border-color:#c9a51c; }
+html[data-theme="dark"] .section-card.has-alert{ border-color:var(--alert); }
 html[data-theme="dark"] .section-card.all-done{ background:var(--accent-soft); border-color:#2f4a36; }
 html[data-theme="dark"] .section-card.no-tasks{ border-color:#3c4a3e; }
 html[data-theme="dark"] .section-card.no-tasks .chev{ color:#5c655e; }
@@ -691,6 +702,7 @@ html[data-theme="dark"] .passcode-keypad button:active{ background:#2f382f; }
 html[data-theme="dark"] .config-banner{ background:var(--warn-bg); border-color:var(--warn-border); color:var(--warn-text); }
 html[data-theme="dark"] .config-banner code{ background:var(--surface-2); border-color:var(--warn-border); color:var(--warn-text); }
 html[data-theme="dark"] .section-alert{ background:var(--warn-bg); border-color:var(--warn-border); color:var(--warn-text); }
+html[data-theme="dark"] .section-notice{ background:#3b3610; border-color:#6b5f1a; color:#efe08a; }
 html[data-theme="dark"] .name-chip{ background:var(--surface-2); }
 html[data-theme="dark"] .pref-row.is-past{ background:#181d19; border-color:var(--surface-2); }
 html[data-theme="dark"] .pref-row.is-today{ background:var(--accent-soft); }
@@ -2592,6 +2604,7 @@ let dateStats = {};        // 日付ごとの{done,total}(直近7日分)
 let undoStacks = { asa:[], hiru:[], yugata:[] };
 const UNDO_LIMIT = 20;
 
+
 let atlasRestPollTimer=null,atlasRestPollBusy=false,atlasRestPollTab=null;
 let atlasRestPollFailureCount=0;
 // 栽培管理は複数端末でのチェック共有のため30秒間隔でポーリング。
@@ -3167,7 +3180,7 @@ function render(){
     head.className="section-head";
             head.innerHTML=`
       <div class="section-top-row">
-        <div class="section-title">${escapeHtml(section.name)}${section.alert?`<span class="section-alert">⚠️ ${escapeHtml(section.alert)}</span>`:``}</div>
+        <div class="section-title">${escapeHtml(section.name)}${section.alert?`<span class="section-alert">⚠️ ${escapeHtml(section.alert)}</span>`:``}${section.notice?`<span class="section-notice">📢 ${escapeHtml(section.notice)}</span>`:``}</div>
         <div class="section-title-actions">
           <span class="section-count" data-count></span>
           ${(readOnly || !isOpen) ? `` : `<button class="icon-btn" data-toggle-section="${section.id}" title="まとめてチェック" style="font-size:18px;">☑</button>`}
@@ -3185,6 +3198,7 @@ function render(){
           </div>
           <button class="icon-btn" data-edit-assignee="${section.id}" title="担当を編集">${pencilSvg()}</button>
           <button class="icon-btn" data-edit-alert="${section.id}" title="注意事項を編集" style="font-size:15px;">⚠️</button>
+          <button class="icon-btn" data-edit-notice="${section.id}" title="臨時のお知らせを編集" style="font-size:15px;">📢</button>
           <button class="icon-btn" data-del-section="${section.id}" title="この場所を削除">${trashSvg()}</button>
         </div>` : ``}
       </div>` : ``}
@@ -3248,6 +3262,7 @@ function render(){
 
     card.appendChild(list);
     if(activeTaskCount>0 && sectionDone===activeTaskCount) card.classList.add("all-done");
+    if(section.notice) card.classList.add("has-notice");
     if(section.alert) card.classList.add("has-alert");
         const countEl = head.querySelector("[data-count]");
     if(activeTaskCount){
@@ -3362,6 +3377,25 @@ function render(){
     });
     render();
     showToast(newAlert ? "注意事項を更新しました" : "注意事項を削除しました");
+  });
+});
+  main.querySelectorAll("[data-edit-notice]").forEach(el=>{
+  el.addEventListener("click", async (e)=>{
+    e.stopPropagation();
+    if(isHistoryMode()) return;
+    const sId=el.getAttribute("data-edit-notice");
+    const sec=structures[currentTab].find(s=>s.id===sId);
+    const val = prompt(`「${sec.name}」の臨時のお知らせを入力してください(台風対応で換気を手動にしている等。対応が終わったら空にして決定すると消えます)`, sec.notice||"");
+    if(val===null) return;
+    pushUndo(currentTab);
+    const newNotice = val.trim();
+    await transactStructure(currentTab, (sections)=>{
+      const s = sections.find(s=>s.id===sId);
+      if(s) s.notice = newNotice;
+      return sections;
+    });
+    render();
+    showToast(newNotice ? "お知らせを更新しました" : "お知らせを解除しました");
   });
 });
     main.querySelectorAll("[data-edit-task]").forEach(el=>{
