@@ -3366,7 +3366,7 @@ function render(){
     if(isHistoryMode()) return;
     const sId=el.getAttribute("data-edit-alert");
     const sec=structures[currentTab].find(s=>s.id===sId);
-    const val = prompt(`「${sec.name}」の注意事項を入力してください(病気の発生など。空にすると消えます)`, sec.alert||"");
+    const val = prompt(`「${sec.name}」の注意アナウンスを入力してください(例:病気の発生など)空欄で決定すると解除されます`, sec.alert||"");
     if(val===null) return;
     pushUndo(currentTab);
     const newAlert = val.trim();
@@ -3385,7 +3385,7 @@ function render(){
     if(isHistoryMode()) return;
     const sId=el.getAttribute("data-edit-notice");
     const sec=structures[currentTab].find(s=>s.id===sId);
-    const val = prompt(`「${sec.name}」の臨時のお知らせを入力してください(台風対応で換気を手動にしている等。対応が終わったら空にして決定すると消えます)`, sec.notice||"");
+    const val = prompt(`「${sec.name}」の臨時アナウンスを入力してください(例:台風対応により換気を手動に変更中など)空欄で決定すると解除されます`, sec.notice||"");
     if(val===null) return;
     pushUndo(currentTab);
     const newNotice = val.trim();
