@@ -2447,6 +2447,29 @@ const INITIAL_DATA = {
 const TAB_ORDER = ["asa","hiru","yugata"];
 const TAB_LABELS = { asa:"朝", hiru:"昼", yugata:"夕" };
 function otherTabsOf(tab){ return TAB_ORDER.filter(t=>t!==tab); }
+// 注意事項/臨時のお知らせを、同じ名前の場所(セクション)がある朝・昼・夕すべてに同じ内容で反映する。
+// 現在のタブは場所のIDで、他のタブは場所の名前で対応付ける。
+// 未作成のタブや同じ名前の場所がないタブは何もしない(空のデータで上書きしないため)。
+// 戻り値: 反映したタブの配列(現在のタブが先頭)
+async function setSectionFieldAllTabs(sectionId, sectionName, field, value){
+  const done=[];
+  for(const t of [currentTab, ...otherTabsOf(currentTab)]){
+    if(t!==currentTab){
+      try{
+        const snap = await withDbTimeout(structureRef(t).get(), "sectionFieldSync-get-timeout");
+        const secs = (snap.exists && snap.data() && snap.data().sections) ? snap.data().sections : [];
+        if(!secs.some(x=>x.name===sectionName)) continue;
+      }catch(err){ continue; }
+    }
+    await transactStructure(t, (sections)=>{
+      const target = (t===currentTab) ? sections.find(x=>x.id===sectionId) : sections.find(x=>x.name===sectionName);
+      if(target) target[field] = value;
+      return sections;
+    });
+    done.push(t);
+  }
+  return done;
+}
 // 他タブとの連動(追加コピー/編集/削除)で「同じタスク」とみなす条件。
 // 場所(セクション)は名前で対応付けるが、タスク本文だけで判定すると、同じ場所に
 // 担当者違いで文言が完全一致するタスクが複数あった場合に誤って連動してしまうため、
@@ -3366,17 +3389,13 @@ function render(){
     if(isHistoryMode()) return;
     const sId=el.getAttribute("data-edit-alert");
     const sec=structures[currentTab].find(s=>s.id===sId);
-    const val = prompt(`「${sec.name}」の注意アナウンスを入力してください(例:病気の発生など)空欄で決定すると解除されます`, sec.alert||"");
+    const val = prompt(`「${sec.name}」の注意アナウンスを入力してください(例:病気の発生など)朝・昼・夕の同じ場所すべてに反映されます。空欄で決定すると解除されます。`, sec.alert||"");
     if(val===null) return;
     pushUndo(currentTab);
     const newAlert = val.trim();
-    await transactStructure(currentTab, (sections)=>{
-      const s = sections.find(s=>s.id===sId);
-      if(s) s.alert = newAlert;
-      return sections;
-    });
+    const doneTabs = await setSectionFieldAllTabs(sId, sec.name, "alert", newAlert);
     render();
-    showToast(newAlert ? "注意事項を更新しました" : "注意事項を削除しました");
+    showToast((newAlert ? "注意事項を更新しました" : "注意事項を削除しました") + (doneTabs.length>1 ? `（${doneTabs.map(t=>TAB_LABELS[t]).join("・")}に反映）` : ""));
   });
 });
   main.querySelectorAll("[data-edit-notice]").forEach(el=>{
@@ -3385,17 +3404,13 @@ function render(){
     if(isHistoryMode()) return;
     const sId=el.getAttribute("data-edit-notice");
     const sec=structures[currentTab].find(s=>s.id===sId);
-    const val = prompt(`「${sec.name}」の臨時アナウンスを入力してください(例:台風対応により換気を手動に変更中など)空欄で決定すると解除されます`, sec.notice||"");
+    const val = prompt(`「${sec.name}」の臨時アナウンスを入力してください(例:台風対応により換気を手動に変更中など)朝・昼・夕の同じ場所すべてに反映されます。空欄で決定すると解除されます。`, sec.notice||"");
     if(val===null) return;
     pushUndo(currentTab);
     const newNotice = val.trim();
-    await transactStructure(currentTab, (sections)=>{
-      const s = sections.find(s=>s.id===sId);
-      if(s) s.notice = newNotice;
-      return sections;
-    });
+    const doneTabs = await setSectionFieldAllTabs(sId, sec.name, "notice", newNotice);
     render();
-    showToast(newNotice ? "お知らせを更新しました" : "お知らせを解除しました");
+    showToast((newNotice ? "お知らせを更新しました" : "お知らせを解除しました") + (doneTabs.length>1 ? `（${doneTabs.map(t=>TAB_LABELS[t]).join("・")}に反映）` : ""));
   });
 });
     main.querySelectorAll("[data-edit-task]").forEach(el=>{
