@@ -225,13 +225,9 @@
   }
   .announce-bar.show{ display:flex; }
   .announce-icon{ flex:0 0 auto; }
-    .announce-track{ flex:1 1 0; min-width:0; overflow:hidden; }
-  .announce-run{
-    display:flex; width:max-content;
-    animation:announce-scroll var(--announce-dur,20s) linear infinite;
-  }
-  .announce-item{ flex:0 0 auto; white-space:nowrap; padding-right:3em; }
-  @keyframes announce-scroll{ from{ transform:translateX(0); } to{ transform:translateX(-50%); } }
+      .announce-track{ flex:1 1 0; min-width:0; overflow:hidden; }
+  .announce-run{ display:flex; width:max-content; }
+  .announce-item{ flex:0 0 auto; white-space:nowrap; margin-right:3em; }
   @media (prefers-reduced-motion: reduce){
     .announce-text{ animation:none; padding-left:0; }
     .announce-track{ text-overflow:ellipsis; }
@@ -2664,6 +2660,7 @@ const UNDO_LIMIT = 20;
 let atlasAnnouncement = "";
 let atlasAnnouncePollTick = 0;
 const ANNOUNCE_SPEED_PX_PER_SEC = 50; // 流れる速さ(画面幅に関係なく一定)
+const ANNOUNCE_HOLD_SEC = 3;          // 冒頭で止まっている秒数(流れ終わって戻ってきたときも同じ秒数止まる)
 const ATLAS_ANNOUNCE_EVERY_POLLS = 4; // ポーリング4回に1回(30秒×4=約2分)だけ取得し、読み取りを増やしすぎない
 
 function renderAnnouncement(){
@@ -2672,6 +2669,7 @@ function renderAnnouncement(){
   const run = document.getElementById("announceRun");
   if(!bar || !track || !run) return;
   if(!atlasAnnouncement){
+    if(run._anim){ run._anim.cancel(); run._anim = null; }
     bar.classList.remove("show");
     run.innerHTML = "";
     run.dataset.text = "";
@@ -2684,23 +2682,33 @@ function renderAnnouncement(){
   if(run.dataset.text === atlasAnnouncement && run.dataset.w === String(w)) return; // 内容も幅も同じなら作り直さない
   run.dataset.text = atlasAnnouncement;
   run.dataset.w = String(w);
+  if(run._anim){ run._anim.cancel(); run._anim = null; }
   const makeItem = ()=>{
     const s = document.createElement("span");
     s.className = "announce-item";
     s.textContent = atlasAnnouncement;
     return s;
   };
-  // 文1つ分の幅を測り、「1組の幅がバー幅以上」になるよう必要な回数だけ並べる。
-  // それを2組つないで、半分(=1組分)だけ流すことで、頭に戻る継ぎ目を見えなくする。
   run.innerHTML = "";
-  const probe = makeItem();
-  run.appendChild(probe);
-  const itemW = Math.max(1, probe.getBoundingClientRect().width);
-  const n = Math.max(1, Math.ceil(w / itemW));
-  run.removeChild(probe);
-  for(let i=0;i<n*2;i++) run.appendChild(makeItem());
-  run.style.setProperty("--announce-dur", Math.max(6, Math.round(itemW*n / ANNOUNCE_SPEED_PX_PER_SEC)) + "s");
+  const first = makeItem();
+  run.appendChild(first);
+  const textW = first.getBoundingClientRect().width;
+  if(textW <= w) return; // 1行に収まる場合は流さず、そのまま表示する
+  // 収まらない場合: 同じ文をもう1つ後ろにつなぎ、「文の幅+間隔」だけ流すと、
+  // 2つ目の頭が開始位置に来る(=見た目が最初と同じ)ので、そこで頭に戻して繰り返す。
+  // 各周期の先頭で ANNOUNCE_HOLD_SEC 秒止まってから流れ始める。
+  const second = makeItem();
+  run.appendChild(second);
+  const step = second.getBoundingClientRect().left - first.getBoundingClientRect().left;
+  const totalSec = ANNOUNCE_HOLD_SEC + step / ANNOUNCE_SPEED_PX_PER_SEC;
+  if(typeof run.animate !== "function") return; // 古いブラウザでは流さず、先頭を表示するだけにする
+  run._anim = run.animate([
+    { transform:"translateX(0)", offset:0 },
+    { transform:"translateX(0)", offset:ANNOUNCE_HOLD_SEC/totalSec },
+    { transform:"translateX(" + (-step) + "px)", offset:1 }
+  ], { duration:totalSec*1000, iterations:Infinity, easing:"linear" });
 }
+
 // バーの幅が変わったとき(画面の回転、非表示→表示など)に作り直す
 if(typeof ResizeObserver !== "undefined"){
   const announceTrackEl = document.getElementById("announceTrack");
