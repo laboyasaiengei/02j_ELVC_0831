@@ -1103,7 +1103,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 <script>
 /* SENTINEL Central Diagnostic v0.2 — production automatic reporting; no user-entered data */
 (function(){
-const ATLAS_APP_VERSION='1.2';
+const ATLAS_APP_VERSION='1.2.1';
 const APP='atlas-prod', VER=ATLAS_APP_VERSION, CFG={apiKey:"AIzaSyCZOI7sTRGn2xw6VWPkXblb8KW4TM_BcwU",authDomain:"dev-caesar.firebaseapp.com",projectId:"dev-caesar",storageBucket:"dev-caesar.firebasestorage.app",messagingSenderId:"339298618142",appId:"1:339298618142:web:69e5af56d4fb66840f170f"}, SITE="6LffvagtAAAAAMYORF3VlYDdUBemsfqunrxkArCo";
 const QK="sentinelDiagQueue.v0.2."+APP,RK="sentinelDiagRate.v0.2."+APP,origFetch=window.fetch.bind(window),recent=new Map();let app,auth,check,busy=false;
 const clean=(v,n)=>String(v==null?"":v).replace(/[\r\n\t]+/g," ").slice(0,n);
@@ -2854,7 +2854,6 @@ async function saveChecks(tab){
         stats: stats,
         updatedAt: atlasServerTimestamp()
       });
-      scheduleAutoBackup(tab);
       return;
     }catch(e){
       if(attempt < 2){
@@ -2866,9 +2865,10 @@ async function saveChecks(tab){
     }
   }
 }
+
 function sleep(ms){ return new Promise(resolve=>setTimeout(resolve, ms)); }
 
-  async function transactChecks(tab, mutateFn){
+    async function transactChecks(tab, mutateFn){
   if(!firebaseReady){ showConfigWarningOnce(); return; }
   // 起動直後など、端末の通信/IndexedDBがまだ本調子でないタイミングでは
   // このトランザクションが単発で失敗することがある。少し間をおいて
@@ -2889,7 +2889,6 @@ function sleep(ms){ return new Promise(resolve=>setTimeout(resolve, ms)); }
         todayCheckedCache[tab] = todayChecked;
         dateStats[todayStr] = stats;
       });
-      scheduleAutoBackup(tab);
       return;
     }catch(e){
       if(attempt < 2){
@@ -3688,13 +3687,22 @@ async function createBackup(silent){
     if(!silent) connErrFail("バックアップの保存", e);
   }
 }
+// 古いバックアップの整理は、そのタブのバックアップを全件(最大100件超)読み込むため、
+// 保存のたびには行わず、端末・タブごとに30分に1回までにする。
+// (チェックを付けるたびに自動バックアップが走るので、毎回整理すると読み取りが大量に発生する)
+const PRUNE_BACKUPS_MIN_INTERVAL_MS = 30*60*1000;
+const lastPruneBackupsAt = {};
 async function pruneBackups(){
+  const tab = currentTab;
+  const now = Date.now();
+  if(lastPruneBackupsAt[tab] && now - lastPruneBackupsAt[tab] < PRUNE_BACKUPS_MIN_INTERVAL_MS) return;
+  lastPruneBackupsAt[tab] = now;
   try{
-    const q = await withDbTimeout(backupsCol(currentTab).orderBy("createdAt","desc").get(), "pruneBackups-get-timeout");
+    const q = await withDbTimeout(backupsCol(tab).orderBy("createdAt","desc").get(), "pruneBackups-get-timeout");
     const docs = q.docs;
     if(docs.length>BACKUP_LIMIT){
       const excess = docs.slice(BACKUP_LIMIT);
-      for(const d of excess){ await withDbTimeout(backupsCol(currentTab).doc(d.id).delete(), "pruneBackups-delete-timeout"); }
+      for(const d of excess){ await withDbTimeout(backupsCol(tab).doc(d.id).delete(), "pruneBackups-delete-timeout"); }
     }
   }catch(e){ /* 一覧整理の失敗は致命的ではないため無視 */ }
 }
@@ -3811,15 +3819,13 @@ function renderBackupPreview(payload){
     </div>
   `;
   document.getElementById("backupPreviewBack").addEventListener("click", ()=>renderBackupListPage());
-  document.getElementById("backupPreviewRestore").addEventListener("click", async ()=>{
+    document.getElementById("backupPreviewRestore").addEventListener("click", async ()=>{
     if(!confirm("このバックアップの内容で復元します。今の内容は上書きされます。よろしいですか？")) return;
     try{
       pushUndo(currentTab);
       structures[currentTab]=payload.structure;
-      todayChecked = (payload.day===todayStr) ? payload.checks : {};
-      checkedMap = todayChecked;
+      // バックアップは構成の変更時にのみ取るため、チェック状態は復元せず現状を維持する
       await saveStructure(currentTab);
-      await saveChecks(currentTab);
       render();
       document.getElementById("restoreModal").classList.remove("show");
       showToast("復元しました");
@@ -3828,6 +3834,7 @@ function renderBackupPreview(payload){
     }
   });
 }
+
 function openDateRefModal(){
   const listEl = document.getElementById("dateRefList");
   const days = getLastNDays(HISTORY_DAYS).filter(isDutyDate);
