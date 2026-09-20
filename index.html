@@ -225,13 +225,14 @@
   }
   .announce-bar.show{ display:flex; }
   .announce-icon{ flex:0 0 auto; }
-  .announce-track{ flex:1 1 auto; min-width:0; overflow:hidden; white-space:nowrap; }
-  .announce-text{
-    display:inline-block; padding-left:100%;
+    .announce-track{ flex:1 1 0; min-width:0; overflow:hidden; }
+  .announce-run{
+    display:flex; width:max-content;
     animation:announce-scroll var(--announce-dur,20s) linear infinite;
   }
-  .announce-bar:active .announce-text{ animation-play-state:paused; }
-  @keyframes announce-scroll{ from{ transform:translateX(0); } to{ transform:translateX(-100%); } }
+  .announce-item{ flex:0 0 auto; white-space:nowrap; padding-right:3em; }
+  .announce-bar:active .announce-run{ animation-play-state:paused; }
+  @keyframes announce-scroll{ from{ transform:translateX(0); } to{ transform:translateX(-50%); } }
   @media (prefers-reduced-motion: reduce){
     .announce-text{ animation:none; padding-left:0; }
     .announce-track{ text-overflow:ellipsis; }
@@ -952,7 +953,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
       <button class="foot-btn" id="editModeBtn">✏️ 編集</button>
     </div>
 
-    <div class="announce-bar" id="announceBar"><span class="announce-icon">ℹ️</span><div class="announce-track"><span class="announce-text" id="announceText"></span></div></div>
+        <div class="announce-bar" id="announceBar"><span class="announce-icon">ℹ️</span><div class="announce-track" id="announceTrack"><div class="announce-run" id="announceRun"></div></div></div>
   </div>
 
 
@@ -2663,24 +2664,50 @@ const UNDO_LIMIT = 20;
 /* ---------- 全体向けアナウンス(栽培管理の全タブ共通。meta/flags の announcement フィールドに保存) ---------- */
 let atlasAnnouncement = "";
 let atlasAnnouncePollTick = 0;
+const ANNOUNCE_SPEED_PX_PER_SEC = 50; // 流れる速さ(画面幅に関係なく一定)
 const ATLAS_ANNOUNCE_EVERY_POLLS = 4; // ポーリング4回に1回(30秒×4=約2分)だけ取得し、読み取りを増やしすぎない
 
 function renderAnnouncement(){
   const bar = document.getElementById("announceBar");
-  const textEl = document.getElementById("announceText");
-  if(!bar || !textEl) return;
+  const track = document.getElementById("announceTrack");
+  const run = document.getElementById("announceRun");
+  if(!bar || !track || !run) return;
   if(!atlasAnnouncement){
     bar.classList.remove("show");
-    textEl.textContent = "";
+    run.innerHTML = "";
+    run.dataset.text = "";
+    run.dataset.w = "";
     return;
   }
-  if(textEl.textContent !== atlasAnnouncement){
-    textEl.textContent = atlasAnnouncement;
-    // 文字数に応じて流れる速さを調整(長いほど周期を長くして、読める速さを保つ)
-    bar.style.setProperty("--announce-dur", Math.max(10, Math.round(7 + atlasAnnouncement.length*0.25)) + "s");
-  }
-  bar.classList.add("show");
+  bar.classList.add("show"); // 幅を測るため、先に表示状態にする
+  const w = track.clientWidth;
+  if(!w) return; // 栽培管理の画面が非表示(当番管理など)のときは測れない。表示されたとき、下の監視が呼び直す
+  if(run.dataset.text === atlasAnnouncement && run.dataset.w === String(w)) return; // 内容も幅も同じなら作り直さない
+  run.dataset.text = atlasAnnouncement;
+  run.dataset.w = String(w);
+  const makeItem = ()=>{
+    const s = document.createElement("span");
+    s.className = "announce-item";
+    s.textContent = atlasAnnouncement;
+    return s;
+  };
+  // 文1つ分の幅を測り、「1組の幅がバー幅以上」になるよう必要な回数だけ並べる。
+  // それを2組つないで、半分(=1組分)だけ流すことで、頭に戻る継ぎ目を見えなくする。
+  run.innerHTML = "";
+  const probe = makeItem();
+  run.appendChild(probe);
+  const itemW = Math.max(1, probe.getBoundingClientRect().width);
+  const n = Math.max(1, Math.ceil(w / itemW));
+  run.removeChild(probe);
+  for(let i=0;i<n*2;i++) run.appendChild(makeItem());
+  run.style.setProperty("--announce-dur", Math.max(6, Math.round(itemW*n / ANNOUNCE_SPEED_PX_PER_SEC)) + "s");
 }
+// バーの幅が変わったとき(画面の回転、非表示→表示など)に作り直す
+if(typeof ResizeObserver !== "undefined"){
+  const announceTrackEl = document.getElementById("announceTrack");
+  if(announceTrackEl) new ResizeObserver(()=>renderAnnouncement()).observe(announceTrackEl);
+}
+
 function atlasApplyAnnouncement(text){
   text = (typeof text === "string") ? text : "";
   if(text === atlasAnnouncement) return;
