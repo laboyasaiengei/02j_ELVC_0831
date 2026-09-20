@@ -231,7 +231,6 @@
     animation:announce-scroll var(--announce-dur,20s) linear infinite;
   }
   .announce-item{ flex:0 0 auto; white-space:nowrap; padding-right:3em; }
-  .announce-bar:active .announce-run{ animation-play-state:paused; }
   @keyframes announce-scroll{ from{ transform:translateX(0); } to{ transform:translateX(-50%); } }
   @media (prefers-reduced-motion: reduce){
     .announce-text{ animation:none; padding-left:0; }
