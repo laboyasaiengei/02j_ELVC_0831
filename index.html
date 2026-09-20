@@ -214,6 +214,36 @@
     font-size:12.5px; font-weight:600;
   }
   .duty-of-day-banner b{ font-family:"Zen Maru Gothic",sans-serif; }
+  
+    /* ---- 全体向けアナウンス(ヘッダー内の流れる1行) ---- */
+  .announce-bar{
+    display:none; align-items:center; gap:6px;
+    margin:0 0 8px; padding:0 10px; height:28px;
+    border-radius:999px; overflow:hidden;
+    background:rgba(255,224,102,.16); border:1px solid rgba(255,224,102,.45);
+    color:#fff1a8; font-size:12px; font-weight:600;
+  }
+  .announce-bar.show{ display:flex; }
+  .announce-icon{ flex:0 0 auto; }
+  .announce-track{ flex:1 1 auto; min-width:0; overflow:hidden; white-space:nowrap; }
+  .announce-text{
+    display:inline-block; padding-left:100%;
+    animation:announce-scroll var(--announce-dur,20s) linear infinite;
+  }
+  .announce-bar:active .announce-text{ animation-play-state:paused; }
+  @keyframes announce-scroll{ from{ transform:translateX(0); } to{ transform:translateX(-100%); } }
+  @media (prefers-reduced-motion: reduce){
+    .announce-text{ animation:none; padding-left:0; }
+    .announce-track{ text-overflow:ellipsis; }
+  }
+  /* ---- 編集モード中に出す「全体向けアナウンスを追加/編集」ボタン ---- */
+  .announce-edit-btn{
+    display:block; width:100%; margin:0 0 12px; padding:10px 13px; text-align:left;
+    border:1.5px dashed #e3c73a; background:#fffbe0; color:#5e4f00;
+    border-radius:12px; font-size:12.5px; font-weight:600; cursor:pointer;
+    font-family:"Noto Sans JP",sans-serif;
+  }
+  html[data-theme="dark"] .announce-edit-btn{ background:#3b3610; border-color:#6b5f1a; color:#efe08a; }
 
   .section-card{
     background:var(--card);
@@ -896,7 +926,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
     <button data-mode="duty">📅 当番管理</button>
   </div>
 
-  <div id="checkModeHeader">
+    <div id="checkModeHeader">
     <nav class="tabs" id="tabNav">
       <button data-tab="asa" class="active">朝管理</button>
       <button data-tab="hiru">昼管理</button>
@@ -921,7 +951,10 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
       <button class="foot-btn" id="restoreBtn">📂 復元</button>
       <button class="foot-btn" id="editModeBtn">✏️ 編集</button>
     </div>
+
+    <div class="announce-bar" id="announceBar"><span class="announce-icon">ℹ️</span><div class="announce-track"><span class="announce-text" id="announceText"></span></div></div>
   </div>
+
 
   <div id="dutyModeHeader" style="display:none;">
     <nav class="tabs" id="dutySubNav">
@@ -1103,7 +1136,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 <script>
 /* SENTINEL Central Diagnostic v0.2 — production automatic reporting; no user-entered data */
 (function(){
-const ATLAS_APP_VERSION='1.2.1';
+const ATLAS_APP_VERSION='1.2.2';
 const APP='atlas-prod', VER=ATLAS_APP_VERSION, CFG={apiKey:"AIzaSyCZOI7sTRGn2xw6VWPkXblb8KW4TM_BcwU",authDomain:"dev-caesar.firebaseapp.com",projectId:"dev-caesar",storageBucket:"dev-caesar.firebasestorage.app",messagingSenderId:"339298618142",appId:"1:339298618142:web:69e5af56d4fb66840f170f"}, SITE="6LffvagtAAAAAMYORF3VlYDdUBemsfqunrxkArCo";
 const QK="sentinelDiagQueue.v0.2."+APP,RK="sentinelDiagRate.v0.2."+APP,origFetch=window.fetch.bind(window),recent=new Map();let app,auth,check,busy=false;
 const clean=(v,n)=>String(v==null?"":v).replace(/[\r\n\t]+/g," ").slice(0,n);
@@ -2627,6 +2660,54 @@ let dateStats = {};        // 日付ごとの{done,total}(直近7日分)
 let undoStacks = { asa:[], hiru:[], yugata:[] };
 const UNDO_LIMIT = 20;
 
+/* ---------- 全体向けアナウンス(栽培管理の全タブ共通。meta/flags の announcement フィールドに保存) ---------- */
+let atlasAnnouncement = "";
+let atlasAnnouncePollTick = 0;
+const ATLAS_ANNOUNCE_EVERY_POLLS = 4; // ポーリング4回に1回(30秒×4=約2分)だけ取得し、読み取りを増やしすぎない
+
+function renderAnnouncement(){
+  const bar = document.getElementById("announceBar");
+  const textEl = document.getElementById("announceText");
+  if(!bar || !textEl) return;
+  if(!atlasAnnouncement){
+    bar.classList.remove("show");
+    textEl.textContent = "";
+    return;
+  }
+  if(textEl.textContent !== atlasAnnouncement){
+    textEl.textContent = atlasAnnouncement;
+    // 文字数に応じて流れる速さを調整(長いほど周期を長くして、読める速さを保つ)
+    bar.style.setProperty("--announce-dur", Math.max(10, Math.round(7 + atlasAnnouncement.length*0.25)) + "s");
+  }
+  bar.classList.add("show");
+}
+function atlasApplyAnnouncement(text){
+  text = (typeof text === "string") ? text : "";
+  if(text === atlasAnnouncement) return;
+  atlasAnnouncement = text;
+  renderAnnouncement();
+  if(editMode) render(); // 編集モード中は「追加/編集」ボタンの文言も更新する
+}
+async function atlasPollAnnouncement(){
+  try{
+    const md = await atlasFetchDocumentREST("meta","flags");
+    atlasApplyAnnouncement((md.exists && md.data) ? md.data.announcement : "");
+  }catch(err){ /* アナウンス取得の失敗は、栽培管理本体の同期に影響させない */ }
+}
+async function editAnnouncement(){
+  if(isHistoryMode()) return;
+  if(!firebaseReady){ showConfigWarningOnce(); return; }
+  const val = prompt("全体向けアナウンスを入力してください(栽培管理の全タブの上部に表示されます。空欄で決定すると解除されます。)", atlasAnnouncement || "");
+  if(val===null) return;
+  const text = val.replace(/\s+/g, " ").trim().slice(0, 200);
+  try{
+    await withDbTimeout(metaRef().set({ announcement:text }, { merge:true }), "announcement-set-timeout");
+    atlasApplyAnnouncement(text);
+    showToast(text ? "アナウンスを更新しました" : "アナウンスを解除しました");
+  }catch(e){
+    connErrFail("アナウンスの保存", e);
+  }
+}
 
 let atlasRestPollTimer=null,atlasRestPollBusy=false,atlasRestPollTab=null;
 let atlasRestPollFailureCount=0;
@@ -2652,6 +2733,7 @@ function atlasScheduleRestPoll(delay){
     atlasRestPollOnce(atlasRestPollTab);
   },Math.max(0,delay));
 }
+
 async function atlasRestPollOnce(tab){
   if(atlasRestPollBusy||!atlasRestAuthReady||tab!==currentTab){
     if(atlasRestPollTab===tab) atlasScheduleRestPoll(ATLAS_REST_POLL_MS);
@@ -2686,6 +2768,8 @@ async function atlasRestPollOnce(tab){
       changed=true;
     }
     if(changed&&tab===currentTab) render();
+    // 全体向けアナウンスは約2分に1回だけ確認する(待たずに実行。失敗は内部で握りつぶすので本体の同期に影響しない)
+    if((atlasAnnouncePollTick++)%ATLAS_ANNOUNCE_EVERY_POLLS===0) atlasPollAnnouncement();
     atlasRestPollFailureCount=0;
     atlasMarkSyncSuccess();
     atlasScheduleRestPoll(ATLAS_REST_POLL_MS);
@@ -2703,6 +2787,7 @@ async function atlasRestPollOnce(tab){
     atlasRestPollBusy=false;
   }
 }
+
 function startAtlasRestPolling(tab){
   if(atlasRestPollTab===tab&&atlasRestPollTimer) return;
   stopAtlasRestPolling();
@@ -3178,7 +3263,16 @@ function render(){
     dutyBanner.innerHTML = `🧑‍🌾 <b>${dLabel}:</b> ${viewDateAssignees.length ? escapeHtml(viewDateAssignees.join("・")) : "未定"}`;
     main.appendChild(dutyBanner);
   }
-
+        main.appendChild(dutyBanner);
+  }
+  // 編集モード中だけ、「今日の当番」の下に全体向けアナウンスの追加・編集ボタンを出す
+  if(editMode && !readOnly){
+    const annBtn = document.createElement("button");
+    annBtn.className = "announce-edit-btn";
+    annBtn.textContent = atlasAnnouncement ? "ℹ️ 全体向けアナウンスを編集" : "ℹ️ 全体向けアナウンスを追加";
+    annBtn.addEventListener("click", editAnnouncement);
+    main.appendChild(annBtn);
+  }
   document.getElementById("undoBtn").style.display = readOnly ? "none" : "";
   document.getElementById("undoBtn").style.display = readOnly ? "none" : "";
   document.getElementById("backupBtn").style.display = readOnly ? "none" : "";
