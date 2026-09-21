@@ -215,19 +215,20 @@
   }
   .duty-of-day-banner b{ font-family:"Zen Maru Gothic",sans-serif; }
   
-      /* ---- 全体向けアナウンス(ヘッダー内の流れる1行) ---- */
+     /* ---- 全体向けアナウンス(ヘッダー内の流れる1行) ---- */
   .announce-bar{
     display:none; align-items:center; gap:6px;
     margin:0 0 8px; padding:0 10px; height:28px;
     border-radius:999px; overflow:hidden;
-    background:rgba(255,224,102,.16); border:1px solid rgba(255,224,102,.45);
-    color:#fff1a8; font-size:12px; font-weight:600;
+    background:var(--announce-bg, rgba(255,224,102,.16));
+    border:1px solid var(--announce-border, rgba(255,224,102,.45));
+    color:var(--announce-fg, #fff1a8); font-size:12px; font-weight:600;
   }
   .announce-bar.show{ display:flex; }
   .announce-icon{ flex:0 0 auto; }
   .announce-track{ flex:1 1 0; min-width:0; overflow:hidden; }
   .announce-run{ display:flex; width:max-content; will-change:transform; }
-  .announce-item{ flex:0 0 auto; white-space:nowrap; margin-right:3em; }
+  .announce-item{ flex:0 0 auto; white-space:nowrap; }
   /* ---- 編集モード中に出す「全体向けアナウンスを追加/編集」ボタン ---- */
   .announce-edit-btn{
     display:block; width:100%; margin:0 0 12px; padding:10px 13px; text-align:left;
@@ -2663,18 +2664,56 @@ let dateStats = {};        // 日付ごとの{done,total}(直近7日分)
 let undoStacks = { asa:[], hiru:[], yugata:[] };
 const UNDO_LIMIT = 20;
 
-/* ---------- 全体向けアナウンス(栽培管理の全タブ共通。meta/flags の announcement フィールドに保存) ---------- */
+/* ---------- 全体向けアナウンス(栽培管理の全タブ共通。meta/flags の announcement / announcementColor フィールドに保存) ---------- */
 let atlasAnnouncement = "";
+let atlasAnnouncementColor = ""; // 枠の色の種類("yellow" / "red" / "blue")。空なら標準の黄色
 let atlasAnnouncePollTick = 0;
 const ANNOUNCE_SPEED_PX_PER_SEC = 50; // 流れる速さ(画面幅に関係なく一定)
 const ANNOUNCE_HOLD_SEC = 3;          // 冒頭で止まっている秒数(流れ終わって戻ってきたときも同じ秒数止まる)
-const ATLAS_ANNOUNCE_EVERY_POLLS = 4; // ポーリング4回に1回(30秒×4=約2分)だけ取得し、読み取りを増やしすぎない
+const ANNOUNCE_GAP_PX = 36;           // 同じ文どうしの間隔(整数pxにして、継ぎ目の描画をそろえる)
+const ATLAS_ANNOUNCE_EVERY_POLLS = 4;  // ポーリング4回に1回(30秒×4=約2分)だけ取得する
+// 枠の色の選択肢(赤・黄・青の3種類)。ヘッダーが濃い緑のため、緑は同化して見にくいので青にしてある。
+// 枠・背景・文字の色は、種類ごとに見やすいように決めてある。"yellow" が標準(CSSの既定値と同じ色)。
+const ANNOUNCE_COLORS = {
+  yellow: { label:"黄", border:"rgba(255,224,102,.45)", bg:"rgba(255,224,102,.16)", fg:"#fff1a8" },
+  red:    { label:"赤", border:"#ff6b6b",               bg:"rgba(255,107,107,.22)", fg:"#ffd9d9" },
+  blue:   { label:"青", border:"#74c0fc",               bg:"rgba(116,192,252,.20)", fg:"#d6ecff" }
+};
+function announceColorKnown(key){
+  return Object.prototype.hasOwnProperty.call(ANNOUNCE_COLORS, key);
+}
+// 入力(番号 1=黄 2=赤 3=青 / 色の名前)を、色の種類("yellow" など)にそろえる。
+// 空欄は ""(標準の黄色)、読み取れなければ null
+function announceColorFromInput(input){
+  const v = String(input || "").trim().replace(/色$/, "");
+  if(!v) return "";
+  const keys = Object.keys(ANNOUNCE_COLORS);
+  if(/^[1-3]$/.test(v)) return keys[Number(v)-1];
+  const hit = keys.find(k=>ANNOUNCE_COLORS[k].label===v || k===v.toLowerCase());
+  return hit || null;
+}
+// 入力欄に出す表示用(今の色の名前。未設定は空欄)
+function announceColorLabel(key){
+  return announceColorKnown(key) ? ANNOUNCE_COLORS[key].label : "";
+}
+// 色の種類から、枠・背景・文字の色をバーに反映する。未設定・不明なら標準の黄色(CSSの既定値)に戻す
+function announceApplyColor(bar, key){
+  if(!announceColorKnown(key)){
+    ["--announce-bg","--announce-border","--announce-fg"].forEach(k=>bar.style.removeProperty(k));
+    return;
+  }
+  const c = ANNOUNCE_COLORS[key];
+  bar.style.setProperty("--announce-bg", c.bg);
+  bar.style.setProperty("--announce-border", c.border);
+  bar.style.setProperty("--announce-fg", c.fg);
+}
 
 function renderAnnouncement(){
   const bar = document.getElementById("announceBar");
   const track = document.getElementById("announceTrack");
   const run = document.getElementById("announceRun");
   if(!bar || !track || !run) return;
+  announceApplyColor(bar, atlasAnnouncementColor);
   const stopAnim = ()=>{
     // このrunに付いているアニメーションを、念のため残らず止める
     if(typeof run.getAnimations === "function") run.getAnimations().forEach(a=>a.cancel());
@@ -2704,6 +2743,7 @@ function renderAnnouncement(){
   const makeItem = ()=>{
     const s = document.createElement("span");
     s.className = "announce-item";
+    s.style.marginRight = ANNOUNCE_GAP_PX + "px";
     s.textContent = atlasAnnouncement;
     return s;
   };
@@ -2714,10 +2754,15 @@ function renderAnnouncement(){
   if(textW <= w) return; // 1行に収まる場合は流さず、そのまま表示する
   // 収まらない場合: 同じ文をもう1つ後ろにつなぎ、「文の幅+間隔」だけ流すと、
   // 2つ目の頭が開始位置に来る(=見た目が最初と同じ)ので、そこで頭に戻して繰り返す。
+  // 文の幅を整数pxに切り上げ、2つ目の開始位置も整数pxにそろえる
+  // (小数だと、継ぎ目の前後で文字の描画がわずかにずれて、チラついて見えるため)。
   // 各周期の先頭で ANNOUNCE_HOLD_SEC 秒止まってから流れ始める。
+  const itemW = Math.ceil(textW);
+  first.style.width = itemW + "px";
   const second = makeItem();
+  second.style.width = itemW + "px";
   run.appendChild(second);
-  const step = second.getBoundingClientRect().left - first.getBoundingClientRect().left;
+  const step = itemW + ANNOUNCE_GAP_PX;
   const totalSec = ANNOUNCE_HOLD_SEC + step / ANNOUNCE_SPEED_PX_PER_SEC;
   if(typeof run.animate !== "function") return; // 古いブラウザでは流さず、先頭を表示するだけにする
   run._anim = run.animate([
@@ -2726,40 +2771,55 @@ function renderAnnouncement(){
     { transform:"translateX(" + (-step) + "px)", offset:1 }
   ], { duration:totalSec*1000, iterations:Infinity, easing:"linear" });
 }
-
 // バーの幅が変わったとき(画面の回転、非表示→表示など)に作り直す
 if(typeof ResizeObserver !== "undefined"){
   const announceTrackEl = document.getElementById("announceTrack");
   if(announceTrackEl) new ResizeObserver(()=>renderAnnouncement()).observe(announceTrackEl);
 }
-
-function atlasApplyAnnouncement(text){
+function atlasApplyAnnouncement(text, color){
   text = (typeof text === "string") ? text : "";
-  if(text === atlasAnnouncement) return;
+  color = (typeof color === "string") ? color : "";
+  if(text === atlasAnnouncement && color === atlasAnnouncementColor) return;
+  const textChanged = (text !== atlasAnnouncement);
   atlasAnnouncement = text;
+  atlasAnnouncementColor = color;
   renderAnnouncement();
-  if(editMode) render(); // 編集モード中は「追加/編集」ボタンの文言も更新する
+  if(textChanged && editMode) render(); // 編集モード中は「追加/編集」ボタンの文言も更新する
 }
 async function atlasPollAnnouncement(){
   try{
     const md = await atlasFetchDocumentREST("meta","flags");
-    atlasApplyAnnouncement((md.exists && md.data) ? md.data.announcement : "");
+    const d = (md.exists && md.data) ? md.data : {};
+    atlasApplyAnnouncement(d.announcement, d.announcementColor);
   }catch(err){ /* アナウンス取得の失敗は、栽培管理本体の同期に影響させない */ }
 }
 async function editAnnouncement(){
   if(isHistoryMode()) return;
   if(!firebaseReady){ showConfigWarningOnce(); return; }
-  const val = prompt("全体向けアナウンスを入力してください(栽培管理の全タブの上部に表示されます。空欄で決定すると解除されます。)", atlasAnnouncement || "");
+  const val = prompt("全体向けアナウンスを入力してください(栽培管理の全タブの上部に、1行で流れて表示されます。対応が終わったら空にして決定すると消えます)", atlasAnnouncement || "");
   if(val===null) return;
   const text = val.replace(/\s+/g, " ").trim().slice(0, 200);
+  let color = announceColorKnown(atlasAnnouncementColor) ? atlasAnnouncementColor : "";
+  let colorNote = "";
+  if(!text){
+    color = ""; // 消すときは、色も標準に戻す
+  }else{
+    const cval = prompt("枠の色を選んでください(1=黄 2=赤 3=青。番号か名前で入力。空欄で標準の黄色。キャンセルで今の色のまま)", announceColorLabel(color));
+    if(cval!==null){
+      const key = announceColorFromInput(cval);
+      if(key===null) colorNote = "(色は読み取れなかったため、今の色のまま)";
+      else color = key;
+    }
+  }
   try{
-    await withDbTimeout(metaRef().set({ announcement:text }, { merge:true }), "announcement-set-timeout");
-    atlasApplyAnnouncement(text);
-    showToast(text ? "アナウンスを更新しました" : "アナウンスを解除しました");
+    await withDbTimeout(metaRef().set({ announcement:text, announcementColor:color }, { merge:true }), "announcement-set-timeout");
+    atlasApplyAnnouncement(text, color);
+    showToast(text ? "アナウンスを更新しました" + colorNote : "アナウンスを解除しました");
   }catch(e){
     connErrFail("アナウンスの保存", e);
   }
 }
+
 
 /* ---------- 新しいバージョンのお知らせ(古い状態のまま動き続けている端末に、再読み込みを促す) ---------- */
 // 配信中のHTMLを取得し、その中の ATLAS_APP_VERSION が自分のバージョンと違えば、画面上部にバナーを出す。
