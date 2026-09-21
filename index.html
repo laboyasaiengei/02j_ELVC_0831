@@ -215,7 +215,7 @@
   }
   .duty-of-day-banner b{ font-family:"Zen Maru Gothic",sans-serif; }
   
-    /* ---- 全体向けアナウンス(ヘッダー内の流れる1行) ---- */
+      /* ---- 全体向けアナウンス(ヘッダー内の流れる1行) ---- */
   .announce-bar{
     display:none; align-items:center; gap:6px;
     margin:0 0 8px; padding:0 10px; height:28px;
@@ -225,13 +225,9 @@
   }
   .announce-bar.show{ display:flex; }
   .announce-icon{ flex:0 0 auto; }
-      .announce-track{ flex:1 1 0; min-width:0; overflow:hidden; }
-  .announce-run{ display:flex; width:max-content; }
+  .announce-track{ flex:1 1 0; min-width:0; overflow:hidden; }
+  .announce-run{ display:flex; width:max-content; will-change:transform; }
   .announce-item{ flex:0 0 auto; white-space:nowrap; margin-right:3em; }
-  @media (prefers-reduced-motion: reduce){
-    .announce-text{ animation:none; padding-left:0; }
-    .announce-track{ text-overflow:ellipsis; }
-  }
   /* ---- 編集モード中に出す「全体向けアナウンスを追加/編集」ボタン ---- */
   .announce-edit-btn{
     display:block; width:100%; margin:0 0 12px; padding:10px 13px; text-align:left;
@@ -420,6 +416,16 @@
   pointer-events:none; z-index:9998; max-width:85vw; text-align:center;
 }
   .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  
+  /* ---- 新しいバージョンのお知らせ(画面最上部に固定) ---- */
+  #updateBanner{
+    display:none; position:fixed; top:0; left:0; right:0; z-index:9000;
+    padding:calc(env(safe-area-inset-top,0px) + 8px) 12px 8px;
+    background:#1d4ed8; color:#fff; text-align:center;
+    font-size:13px; font-weight:700; cursor:pointer;
+    box-shadow:0 2px 8px rgba(0,0,0,.25);
+  }
+  #updateBanner.show{ display:block; }
 
   .app-loading-overlay{
     position:fixed; inset:0; z-index:9999;
@@ -1121,7 +1127,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
     <button class="modal-close" id="closeBaiyoekiModal">閉じる</button>
   </div>
 </div>
-
+<div id="updateBanner"></div>
 <div class="toast" id="toast"></div>
 
 <!-- Firebase SDK (compat版。設定は下部スクリプト内 firebaseConfig を参照) -->
@@ -1133,6 +1139,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 /* SENTINEL Central Diagnostic v0.2 — production automatic reporting; no user-entered data */
 (function(){
 const ATLAS_APP_VERSION='1.2.3';
+window.__atlasAppVersion=ATLAS_APP_VERSION; // 本体側(別のscript)から参照できるように公開
 const APP='atlas-prod', VER=ATLAS_APP_VERSION, CFG={apiKey:"AIzaSyCZOI7sTRGn2xw6VWPkXblb8KW4TM_BcwU",authDomain:"dev-caesar.firebaseapp.com",projectId:"dev-caesar",storageBucket:"dev-caesar.firebasestorage.app",messagingSenderId:"339298618142",appId:"1:339298618142:web:69e5af56d4fb66840f170f"}, SITE="6LffvagtAAAAAMYORF3VlYDdUBemsfqunrxkArCo";
 const QK="sentinelDiagQueue.v0.2."+APP,RK="sentinelDiagRate.v0.2."+APP,origFetch=window.fetch.bind(window),recent=new Map();let app,auth,check,busy=false;
 const clean=(v,n)=>String(v==null?"":v).replace(/[\r\n\t]+/g," ").slice(0,n);
@@ -2668,8 +2675,13 @@ function renderAnnouncement(){
   const track = document.getElementById("announceTrack");
   const run = document.getElementById("announceRun");
   if(!bar || !track || !run) return;
+  const stopAnim = ()=>{
+    // このrunに付いているアニメーションを、念のため残らず止める
+    if(typeof run.getAnimations === "function") run.getAnimations().forEach(a=>a.cancel());
+    run._anim = null;
+  };
   if(!atlasAnnouncement){
-    if(run._anim){ run._anim.cancel(); run._anim = null; }
+    stopAnim();
     bar.classList.remove("show");
     run.innerHTML = "";
     run.dataset.text = "";
@@ -2678,11 +2690,17 @@ function renderAnnouncement(){
   }
   bar.classList.add("show"); // 幅を測るため、先に表示状態にする
   const w = track.clientWidth;
-  if(!w) return; // 栽培管理の画面が非表示(当番管理など)のときは測れない。表示されたとき、下の監視が呼び直す
+  if(!w){
+    // 栽培管理の画面が非表示(当番管理など)のときは、測れないし見えない。
+    // 動かし続けず止めておき、表示されたとき(下の監視が呼び直す)に最初から作り直す。
+    stopAnim();
+    run.dataset.w = "";
+    return;
+  }
   if(run.dataset.text === atlasAnnouncement && run.dataset.w === String(w)) return; // 内容も幅も同じなら作り直さない
   run.dataset.text = atlasAnnouncement;
   run.dataset.w = String(w);
-  if(run._anim){ run._anim.cancel(); run._anim = null; }
+  stopAnim();
   const makeItem = ()=>{
     const s = document.createElement("span");
     s.className = "announce-item";
@@ -2742,6 +2760,51 @@ async function editAnnouncement(){
     connErrFail("アナウンスの保存", e);
   }
 }
+
+/* ---------- 新しいバージョンのお知らせ(古い状態のまま動き続けている端末に、再読み込みを促す) ---------- */
+// 配信中のHTMLを取得し、その中の ATLAS_APP_VERSION が自分のバージョンと違えば、画面上部にバナーを出す。
+// Firestoreは使わないので、読み取りは増えない。
+const ATLAS_VERSION_CHECK_INTERVAL_MS = 30*60*1000; // 開きっぱなしの間の確認間隔
+const ATLAS_VERSION_CHECK_MIN_GAP_MS = 5*60*1000;   // アプリに戻ってきたときの確認は、前回から5分以上あいているときだけ
+let atlasVersionCheckedAt = 0;
+let atlasVersionChecking = false;
+
+async function atlasCheckForNewVersion(){
+  if(atlasVersionChecking) return;
+  const mine = window.__atlasAppVersion;
+  if(!mine || !navigator.onLine || location.protocol==="file:") return;
+  atlasVersionChecking = true;
+  atlasVersionCheckedAt = Date.now();
+  try{
+    const res = await fetch(location.pathname + "?_=" + Date.now(), { cache:"no-store" });
+    if(!res.ok) return;
+    const html = await res.text();
+    const m = html.match(/ATLAS_APP_VERSION\s*=\s*['"]([^'"]+)['"]/);
+    if(m && m[1] !== mine) atlasShowUpdateBanner(m[1]);
+  }catch(err){ /* 確認の失敗(オフラインなど)は無視する */ }
+  finally{ atlasVersionChecking = false; }
+}
+function atlasShowUpdateBanner(latest){
+  const el = document.getElementById("updateBanner");
+  if(!el) return;
+  el.textContent = "新しいバージョン(" + latest + ")があります。タップして更新";
+  el.dataset.latest = latest;
+  el.classList.add("show");
+}
+(function(){
+  const el = document.getElementById("updateBanner");
+  if(el){
+    el.addEventListener("click", ()=>{
+      // 通常の再読み込みでは古いHTMLが再利用されることがあるため、URLに版を付けて取り直す
+      location.replace(location.pathname + "?v=" + encodeURIComponent(el.dataset.latest || Date.now()));
+    });
+  }
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.visibilityState==="visible" && Date.now()-atlasVersionCheckedAt >= ATLAS_VERSION_CHECK_MIN_GAP_MS) atlasCheckForNewVersion();
+  });
+  setInterval(()=>{ if(document.visibilityState==="visible") atlasCheckForNewVersion(); }, ATLAS_VERSION_CHECK_INTERVAL_MS);
+  setTimeout(atlasCheckForNewVersion, 10000); // 起動10秒後にも1回確認する
+})();
 
 let atlasRestPollTimer=null,atlasRestPollBusy=false,atlasRestPollTab=null;
 let atlasRestPollFailureCount=0;
