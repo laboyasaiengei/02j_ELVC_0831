@@ -3,18 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <script>
-/* 起動時にOSの配色設定を同期的に判定し、最初の描画前にテーマを確定させる。
-   ロード画面から最初からdarkで表示するので、light→darkの切り替えが発生しない。
+/* 起動時のスプラッシュ～読み込み画面までは常にlight固定。
+   初期描画の色チラつきを防ぎ、読み込み完了時だけOSの配色設定を判定する。
+   OSがdarkなら既存カーテンで覆ってからdarkへ切り替え、ホームをフェード表示する。
    起動後の手動トグルは従来どおり保存せず、そのセッション内だけ有効。 */
 (function(){
-  var dark = false;
-  try{
-    dark = !!(window.matchMedia &&
-      window.matchMedia('(prefers-color-scheme: dark)').matches);
-  }catch(e){}
-  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.documentElement.dataset.theme = 'light';
 })();
 </script>
+
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <title>栽培・当番管理システム ATLAS</title>
 <meta name="robots" content="noindex, nofollow">
@@ -6194,8 +6191,37 @@ document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
 
   let startupThemeApplied = false;
 
-    const hideOverlayNow = ()=>{
+      let startupThemeApplied = false;
+
+  const hideOverlayNow = ()=>{
     const overlay = document.getElementById("appLoadingOverlay");
+
+    if(!startupThemeApplied){
+      startupThemeApplied = true;
+      let wantsDark = false;
+      try{
+        wantsDark = !!(window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches);
+      }catch(e){}
+
+      if(wantsDark && overlay){
+        // ロード画面だけライト配色に固定したまま、その裏でdarkへ切り替え、
+        // ロード画面をそのままフェードアウトしてdarkのホームを見せる。
+        // 白いカーテンだけの空白状態は挟まない。
+        overlay.style.setProperty("--sand-100", "#f2efe4");
+        overlay.style.setProperty("--ink-soft", "#5c6b5f");
+        overlay.style.setProperty("--leaf-100", "#dfe9de");
+        overlay.style.setProperty("--leaf-600", "#4c7a52");
+        overlay.style.transition = "opacity .4s ease";
+        document.documentElement.dataset.theme = "dark";
+        requestAnimationFrame(()=>{
+          requestAnimationFrame(()=>{ overlay.classList.add("hide"); });
+        });
+        return;
+      }
+      if(wantsDark) document.documentElement.dataset.theme = "dark";
+    }
+
     if(overlay) overlay.classList.add("hide");
   };
 
