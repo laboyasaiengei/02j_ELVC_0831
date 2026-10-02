@@ -3,12 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <script>
-/* 起動時のスプラッシュ～読み込み画面までは常にlight固定。
-   初期描画の色チラつきを防ぎ、読み込み完了時だけOSの配色設定を判定する。
-   OSがdarkなら既存カーテンで覆ってからdarkへ切り替え、ホームをフェード表示する。
+/* 起動時にOSの配色設定を同期的に判定し、最初の描画前にテーマを確定させる。
+   ロード画面から最初からdarkで表示するので、light→darkの切り替えが発生しない。
    起動後の手動トグルは従来どおり保存せず、そのセッション内だけ有効。 */
 (function(){
-  document.documentElement.dataset.theme = 'light';
+  var dark = false;
+  try{
+    dark = !!(window.matchMedia &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches);
+  }catch(e){}
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
 })();
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
@@ -6190,50 +6194,11 @@ document.getElementById("closeBaiyoekiModal").addEventListener("click", ()=>{
 
   let startupThemeApplied = false;
 
-  const hideOverlayNow = ()=>{
+    const hideOverlayNow = ()=>{
     const overlay = document.getElementById("appLoadingOverlay");
-
-    // 起動直後～ロード中は必ずlightのまま。
-    // 初回だけOS設定を確認し、darkならカーテンを被せてから
-    // ホーム画面をdarkへ切り替える。これで起動時の色チラつきを避ける。
-    if(!startupThemeApplied){
-      startupThemeApplied = true;
-      let wantsDark = false;
-      try{
-        wantsDark = !!(window.matchMedia &&
-          window.matchMedia("(prefers-color-scheme: dark)").matches);
-      }catch(e){}
-
-      if(wantsDark){
-        const curtain = document.getElementById("themeCurtain");
-        if(curtain){
-          // ロード画面と同じlight色で覆い、裏でdarkへ切替。
-          // Firestore/同期コードは一切変更しない。
-          document.body.classList.add("atlas-startup-theme-transition");
-          curtain.style.transition = "none";
-          curtain.style.background = "#EEF1EC";
-          curtain.style.opacity = "1";
-
-          requestAnimationFrame(()=>{
-            requestAnimationFrame(()=>{
-              document.documentElement.dataset.theme = "dark";
-              if(overlay) overlay.classList.add("hide");
-
-              window.setTimeout(()=>{
-                curtain.style.transition = "opacity .58s cubic-bezier(.22,.61,.36,1)";
-                document.body.classList.remove("atlas-startup-theme-transition");
-                requestAnimationFrame(()=>{ curtain.style.opacity = "0"; });
-              }, 140);
-            });
-          });
-          return;
-        }
-        document.documentElement.dataset.theme = "dark";
-      }
-    }
-
     if(overlay) overlay.classList.add("hide");
   };
+
   // スピナー表示の代わりに「読み込みに失敗した」ことと、止まった段階を表示する。
   // ここに来た時点で読み込み中表示は消さず、再読み込みボタンだけで先に進めるようにする。
   const showLoadingErrorScreen = (stepLabel)=>{
