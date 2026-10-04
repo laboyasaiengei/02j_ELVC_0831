@@ -1138,14 +1138,14 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 <script>
 /* SENTINEL Central Diagnostic v0.2 — production automatic reporting; no user-entered data */
 (function(){
-const ATLAS_APP_VERSION='1.2.3';
+const ATLAS_APP_VERSION='1.2.4';
 window.__atlasAppVersion=ATLAS_APP_VERSION; // 本体側(別のscript)から参照できるように公開
 const APP='atlas-prod', VER=ATLAS_APP_VERSION, CFG={apiKey:"AIzaSyCZOI7sTRGn2xw6VWPkXblb8KW4TM_BcwU",authDomain:"dev-caesar.firebaseapp.com",projectId:"dev-caesar",storageBucket:"dev-caesar.firebasestorage.app",messagingSenderId:"339298618142",appId:"1:339298618142:web:69e5af56d4fb66840f170f"}, SITE="6LffvagtAAAAAMYORF3VlYDdUBemsfqunrxkArCo";
 const QK="sentinelDiagQueue.v0.2."+APP,RK="sentinelDiagRate.v0.2."+APP,origFetch=window.fetch.bind(window),recent=new Map();let app,auth,check,busy=false;
 const clean=(v,n)=>String(v==null?"":v).replace(/[\r\n\t]+/g," ").slice(0,n);
 function load(k,d){try{const x=JSON.parse(localStorage.getItem(k)||"");return x||d}catch(_){return d}} function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(_){}}
 function allowed(){const now=Date.now(),a=load(RK,[]).filter(t=>now-t<600000);if(a.length>=10)return false;a.push(now);save(RK,a);return true}
-function put(category,location,status,detail){const now=Date.now(),key=[category,location,status||0].join("|");if(now-(recent.get(key)||0)<60000||!allowed())return;recent.set(key,now);const q=load(QK,[]);q.push({time:new Date(now).toISOString(),appId:APP,appVersion:VER,online:navigator.onLine!==false,category:clean(category,60),location:clean(location,80),detail:clean(detail,160),httpStatus:Number(status)||0});save(QK,q.slice(-50));setTimeout(flush,0)}
+function put(category,location,status,detail){const now=Date.now(),key=[category,location,status||0].join("|");if(now-(recent.get(key)||0)<600000||!allowed())return;recent.set(key,now);const q=load(QK,[]);q.push({time:new Date(now).toISOString(),appId:APP,appVersion:VER,online:navigator.onLine!==false,category:clean(category,60),location:clean(location,80),detail:clean(detail,160),httpStatus:Number(status)||0});save(QK,q.slice(-50));setTimeout(flush,0)}
 function loc(u){u=String(u||"");if(u.includes("firestore.googleapis.com"))return "Firestore REST";if(u.includes("securetoken.googleapis.com"))return "Firebase Token";if(u.includes("identitytoolkit.googleapis.com"))return "Firebase Auth";if(u.includes("firebaseappcheck.googleapis.com")||u.includes("recaptchaenterprise.googleapis.com"))return "App Check";return "Firebase/Google API"}
 function watch(u){u=String(u||"");return /(?:firestore|securetoken|identitytoolkit|firebaseappcheck|recaptchaenterprise)\.googleapis\.com/.test(u)&&!u.includes("sentinelDiagnostics")}
 /* Firestore RESTのnetwork-errorだけは特別扱いする:
@@ -1155,7 +1155,8 @@ function watch(u){u=String(u||"");return /(?:firestore|securetoken|identitytoolk
    4) 連続失敗かつ一定時間継続した場合だけ通報する
    5) 同一エラーの再通報は1時間に1回まで */
 const FS_LOC="Firestore REST",FS_RETRY_DELAY_MS=400,FS_MIN_CONSECUTIVE=2,FS_MIN_DURATION_MS=30000,FS_REPORT_COOLDOWN_MS=3600000;
-let fsFailCount=0,fsFirstFailAt=0,fsLastReportedAt=0;
+const netState=new Map();
+function netGet(l){let s=netState.get(l);if(!s){s={fails:0,firstAt:0,lastReportedAt:0};netState.set(l,s)}return s}
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 /* Firestore RESTの401(認証エラー)専用の再認証フック。
    このSENTINEL診断層はATLAS側の認証内部(IDトークンの持ち方など)を知らないため、
@@ -1190,36 +1191,34 @@ async function retryFsAuthOnce(input,init,res401){
 }
 window.fetch=async function(input,init){
   const u=typeof input==="string"?input:(input&&input.url)||"";
-  const isFsTarget=watch(u)&&loc(u)===FS_LOC;
+  const isWatched=watch(u);
+  const isFsTarget=isWatched&&loc(u)===FS_LOC;
+  const L=isWatched?loc(u):"";
   try{
     let r=await origFetch(input,init);
     if(isFsTarget&&r.status===401){
       r=await retryFsAuthOnce(input,init,r);
     }
-    if(watch(u)&&!r.ok)put("http-error",loc(u),r.status,(init&&init.method)||"GET");
-    if(isFsTarget&&r.ok){fsFailCount=0;fsFirstFailAt=0} // 実通信成功=再接続確認。失敗streakをリセット
+    if(isWatched&&!r.ok)put("http-error",L,r.status,(init&&init.method)||"GET");
+    if(isWatched&&r.ok){const s=netGet(L);s.fails=0;s.firstAt=0}
     return r;
   }catch(e){
-    if(!isFsTarget){
-      if(watch(u))put("network-error",loc(u),0,e&&e.name||"fetch failed");
-      throw e;
-    }
+    if(!isWatched)throw e;
     try{
       await sleep(FS_RETRY_DELAY_MS);
       const r2=await origFetch(input,init);
-      if(!r2.ok)put("http-error",FS_LOC,r2.status,(init&&init.method)||"GET");
-      fsFailCount=0;fsFirstFailAt=0; // 再試行で復帰(実際の再接続成功)→通報しない
+      if(!r2.ok)put("http-error",L,r2.status,(init&&init.method)||"GET");
+      const s=netGet(L);s.fails=0;s.firstAt=0;
       return r2;
     }catch(e2){
-      const now=Date.now();
-      if(fsFailCount===0)fsFirstFailAt=now;
-      fsFailCount++;
-      const continued=fsFailCount>=FS_MIN_CONSECUTIVE&&(now-fsFirstFailAt)>=FS_MIN_DURATION_MS;
-      if(continued&&(now-fsLastReportedAt)>=FS_REPORT_COOLDOWN_MS){
-        fsLastReportedAt=now;
-        put("network-error",FS_LOC,0,e2&&e2.name||"fetch failed");
+      const now=Date.now(),s=netGet(L);
+      if(s.fails===0)s.firstAt=now;
+      s.fails++;
+      if(s.fails>=FS_MIN_CONSECUTIVE&&(now-s.firstAt)>=FS_MIN_DURATION_MS&&(now-s.lastReportedAt)>=FS_REPORT_COOLDOWN_MS){
+        s.lastReportedAt=now;
+        put("network-error",L,0,e2&&e2.name||"fetch failed");
       }
-      throw e2; // 呼び出し元の既存のオフライン/エラー処理はそのまま動作させる
+      throw e2;
     }
   }
 };
