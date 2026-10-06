@@ -380,6 +380,16 @@
   }
   .log-field-pair{ display:flex; gap:8px; }
   .log-field-pair .log-field{ flex:1; min-width:0; }
+   .log-check{
+    display:flex; align-items:center; gap:8px; padding:10px 11px;
+    background:var(--leaf-100); border-radius:10px; font-size:13px; font-weight:700;
+    color:var(--leaf-600); cursor:pointer;
+  }
+  .log-check input{ width:20px; height:20px; margin:0; accent-color:var(--leaf-600); }
+  .lh-made{
+    display:inline-block; background:var(--leaf-100); color:var(--leaf-600);
+    border-radius:999px; padding:1px 8px; font-size:11px; font-weight:700; margin-left:4px;
+  }
   .log-save-btn{
     width:100%; border:none; background:var(--leaf-600); color:#fff; border-radius:12px;
     padding:12px; font-size:14px; font-weight:700; cursor:pointer; margin-top:2px;
@@ -6070,6 +6080,10 @@ async function openBaiyoekiModal(){
         <label>培養液の残量(cm)</label>
         <input type="text" inputmode="decimal" id="beLevel" value="${escapeHtml(todayData && todayData.level || "")}">
       </div>
+      <label class="log-check">
+        <input type="checkbox" id="beMade" ${todayData && todayData.made ? "checked" : ""}>
+        培養液を作成済み
+      </label>
       <button class="log-save-btn" id="beSaveBtn">${todayData?"この内容で上書き保存":"保存する"}</button>
     </div>
   ` : `
@@ -6094,6 +6108,7 @@ async function saveBaiyoeki(){
     ec: document.getElementById("beEc").value.trim(),
     ph: document.getElementById("bePh").value.trim(),
     level: document.getElementById("beLevel").value.trim(),
+    made: document.getElementById("beMade").checked,   // ← 追加
     updatedAt: atlasServerTimestamp()
   };
   try{
@@ -6139,7 +6154,7 @@ function renderBaiyoekiHistoryPage(){
     return `<div class="log-history-row">
       <div class="lh-date">${md}(${dow})</div>
       <div class="lh-body">
-        <span class="lh-recorder">${escapeHtml(r.recorder||"-")}</span>
+      <span class="lh-recorder">${escapeHtml(r.recorder||"-")}${r.made ? `<span class="lh-made">培養液作成</span>` : ""}</span>
         EC: ${escapeHtml(r.ec||"-")}／pH: ${escapeHtml(r.ph||"-")}／残量: ${escapeHtml(r.level||"-")}cm
       </div>
     </div>`;
