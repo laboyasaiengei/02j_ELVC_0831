@@ -1148,7 +1148,7 @@ html[data-theme="dark"] .theme-toggle::before{ content:"☀️"; }
 <script>
 /* SENTINEL Central Diagnostic v0.2 — production automatic reporting; no user-entered data */
 (function(){
-const ATLAS_APP_VERSION='1.2.4';
+const ATLAS_APP_VERSION='1.2.5';
 window.__atlasAppVersion=ATLAS_APP_VERSION; // 本体側(別のscript)から参照できるように公開
 const APP='atlas-prod', VER=ATLAS_APP_VERSION, CFG={apiKey:"AIzaSyCZOI7sTRGn2xw6VWPkXblb8KW4TM_BcwU",authDomain:"dev-caesar.firebaseapp.com",projectId:"dev-caesar",storageBucket:"dev-caesar.firebasestorage.app",messagingSenderId:"339298618142",appId:"1:339298618142:web:69e5af56d4fb66840f170f"}, SITE="6LffvagtAAAAAMYORF3VlYDdUBemsfqunrxkArCo";
 const QK="sentinelDiagQueue.v0.2."+APP,RK="sentinelDiagRate.v0.2."+APP,origFetch=window.fetch.bind(window),recent=new Map();let app,auth,check,busy=false;
@@ -1156,6 +1156,7 @@ const clean=(v,n)=>String(v==null?"":v).replace(/[\r\n\t]+/g," ").slice(0,n);
 function load(k,d){try{const x=JSON.parse(localStorage.getItem(k)||"");return x||d}catch(_){return d}} function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(_){}}
 function allowed(){const now=Date.now(),a=load(RK,[]).filter(t=>now-t<600000);if(a.length>=10)return false;a.push(now);save(RK,a);return true}
 function put(category,location,status,detail){const now=Date.now(),key=[category,location,status||0].join("|");if(now-(recent.get(key)||0)<600000||!allowed())return;recent.set(key,now);const q=load(QK,[]);q.push({time:new Date(now).toISOString(),appId:APP,appVersion:VER,online:navigator.onLine!==false,category:clean(category,60),location:clean(location,80),detail:clean(detail,160),httpStatus:Number(status)||0});save(QK,q.slice(-50));setTimeout(flush,0)}
+window.__sentinelReport=put;
 function loc(u){u=String(u||"");if(u.includes("firestore.googleapis.com"))return "Firestore REST";if(u.includes("securetoken.googleapis.com"))return "Firebase Token";if(u.includes("identitytoolkit.googleapis.com"))return "Firebase Auth";if(u.includes("firebaseappcheck.googleapis.com")||u.includes("recaptchaenterprise.googleapis.com"))return "App Check";return "Firebase/Google API"}
 function watch(u){u=String(u||"");return /(?:firestore|securetoken|identitytoolkit|firebaseappcheck|recaptchaenterprise)\.googleapis\.com/.test(u)&&!u.includes("sentinelDiagnostics")}
 /* Firestore RESTのnetwork-errorだけは特別扱いする:
@@ -1395,10 +1396,80 @@ async function atlasRestAuthRequest(){
   atlasRestAuthReady=true;
   return true;
 }
+/* ---- 管理者セッション（メモリのみ。localStorage/sessionStorageには保存しない） ---- */
+const ATLAS_ADMIN_WINDOW_MS = 30 * 60 * 1000;
+let atlasAdminIdToken = "";
+let atlasAdminExpiresAt = 0;
+
+function atlasAdminIsActive(){
+  if(!atlasAdminIdToken) return false;
+  if(Date.now() >= atlasAdminExpiresAt){
+    atlasAdminLogout();
+    return false;
+  }
+  return true;
+}
+function atlasAdminLogout(){
+  atlasAdminIdToken = "";
+  atlasAdminExpiresAt = 0;
+}
+const ATLAS_LOGIN_FAIL_KEY = "atlasAdminLoginFail.v1";
+const ATLAS_LOGIN_FAIL_LIMIT = 3;
+const ATLAS_LOGIN_FAIL_WINDOW_MS = 15 * 60 * 1000;
+
+function atlasAdminLoginNoteFailure(code){
+  let st = { n: 0, firstAt: 0 };
+  try{ st = JSON.parse(localStorage.getItem(ATLAS_LOGIN_FAIL_KEY) || "") || st; }catch(e){}
+  const now = Date.now();
+  if(!st.firstAt || now - st.firstAt > ATLAS_LOGIN_FAIL_WINDOW_MS) st = { n: 0, firstAt: now };
+  st.n++;
+  try{ localStorage.setItem(ATLAS_LOGIN_FAIL_KEY, JSON.stringify(st)); }catch(e){}
+  if(st.n >= ATLAS_LOGIN_FAIL_LIMIT || code === "TOO_MANY_ATTEMPTS_TRY_LATER"){
+    try{
+      if(typeof window.__sentinelReport === "function"){
+        window.__sentinelReport("admin-login-failed", "Admin Login", 0, "fails=" + st.n + " " + code);
+      }
+    }catch(e){}
+  }
+}
+function atlasAdminLoginClearFailures(){
+  try{ localStorage.removeItem(ATLAS_LOGIN_FAIL_KEY); }catch(e){}
+}
+
+async function atlasAdminLogin(email, password){
+  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(firebaseConfig.apiKey)}`,{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({email, password, returnSecureToken:true}),
+    cache:"no-store"
+  });
+  if(!res.ok){
+    let code = "";
+    try{
+      const j = await res.json();
+      code = String((j && j.error && j.error.message) || "").split(/[\s:]/)[0].replace(/[^A-Z_]/g, "").slice(0, 40);
+    }catch(e){}
+    atlasAdminLoginNoteFailure(code || ("HTTP_" + res.status));
+    throw new Error("ADMIN_LOGIN_FAILED");
+  }
+  const data = await res.json();
+  if(!data.idToken) throw new Error("ADMIN_LOGIN_FAILED");
+  atlasAdminLoginClearFailures();
+  const tokenLife = (Number(data.expiresIn) || 3600) * 1000 - 60000;
+  atlasAdminIdToken = data.idToken;
+  atlasAdminExpiresAt = Date.now() + Math.min(ATLAS_ADMIN_WINDOW_MS, tokenLife);
+  return true;
+}
 async function atlasRestAuthHeaders(){
-  if(!atlasRestIdToken) await atlasRestAuthRequest();
+  let token;
+  if(atlasAdminIsActive()){
+    token = atlasAdminIdToken;
+  }else{
+    if(!atlasRestIdToken) await atlasRestAuthRequest();
+    token = atlasRestIdToken;
+  }
   return {
-    "Authorization":"Bearer "+atlasRestIdToken,
+    "Authorization":"Bearer "+token,
     "Content-Type":"application/json"
   };
 }
@@ -4160,160 +4231,131 @@ document.getElementById("closeModal").addEventListener("click", ()=>{
    当番管理モジュール (希望表 / カレンダー / データ)
    ========================================================================= */
 
-/* ---- 権限まわり(簡易パスワード。必要に応じて下の値を書き換えてください) ---- */
-const ADMIN_PASSWORD  = "obungu_no_831";   // 初期パスワード（変更後はFirestore上の値が優先されます）
-let adminPasswordCurrent = ADMIN_PASSWORD;
-function adminAuthRef(){ return db.collection("duty_settings").doc("adminAuth"); }
-async function loadAdminPassword(){
-  try{
-    const snap = await withDbTimeout(adminAuthRef().get(), "adminAuth-get-timeout");
-    if(snap.exists && typeof snap.data().password==="string" && snap.data().password){
-      adminPasswordCurrent = snap.data().password;
-    }
-  }catch(e){ /* オフライン時などは既定値のまま */ }
-}
-async function changeAdminPassword(){
-  const cur = prompt("現在の管理者パスワードを入力してください");
-  if(cur===null) return;
-  if(cur!==adminPasswordCurrent){ showToast("現在のパスワードが違います"); return; }
-  const next1 = prompt("新しいパスワードを入力してください");
-  if(next1===null) return;
-  if(!next1.trim()){ showToast("新しいパスワードを入力してください"); return; }
-  const next2 = prompt("確認のため、新しいパスワードをもう一度入力してください");
-  if(next2===null) return;
-  if(next1!==next2){ showToast("新しいパスワードが一致しません"); return; }
-  try{
-    await adminAuthRef().set({ password: next1 });
-    adminPasswordCurrent = next1;
-    showToast("パスワードを変更しました");
-  }catch(e){
-    toastFail("管理者パスワードの変更", e);
-  }
-}
-let isAdmin  = sessionStorage.getItem("dutyIsAdmin")==="true";
+/* ---- 権限まわり：管理者はFirebase Auth(メール/パスワード)でログインする ---- */
+// 旧方式（ソース内の固定パスワード、Firestore上のパスワード/復元パスコード、sessionStorageのフラグ）は廃止。
+try{ sessionStorage.removeItem("dutyIsAdmin"); }catch(e){}
+let isAdmin  = atlasAdminIsActive();
 let myName   = localStorage.getItem("dutyMyName") || "";
-function unlockAdmin(){
-  if(isAdmin) return true;
-  const pw = prompt("管理者パスワードを入力してください");
-  if(pw===null) return false;
-  if(pw===adminPasswordCurrent){
-    isAdmin=true; sessionStorage.setItem("dutyIsAdmin","true");
-    showToast("管理者モードを解除しました");
-    renderDutyPanel();
-    return true;
-  }
-  showToast("パスワードが違います");
-  return false;
-}
-function lockAdmin(){ isAdmin=false; sessionStorage.removeItem("dutyIsAdmin"); showToast("管理者モードをロックしました"); renderDutyPanel(); }
 
-/* ---- 復元専用パスコード(管理者パスワードとは独立。圃場管理の「復元」ボタン用) ---- */
-const RESTORE_PASSCODE_DEFAULT = "1234"; // 初期パスコード（変更後はFirestore上の値が優先されます）
-let restorePasscodeCurrent = RESTORE_PASSCODE_DEFAULT;
-function restoreAuthRef(){ return db.collection("duty_settings").doc("restoreAuth"); }
-async function loadRestorePasscode(){
-  try{
-    const snap = await withDbTimeout(restoreAuthRef().get(), "restoreAuth-get-timeout");
-    if(snap.exists && typeof snap.data().passcode==="string" && /^\d{4}$/.test(snap.data().passcode)){
-      restorePasscodeCurrent = snap.data().passcode;
-    }
-  }catch(e){ /* オフライン時などは既定値のまま */ }
-}
-async function setRestorePasscode(newCode){
-  try{
-    await restoreAuthRef().set({ passcode: newCode });
-    restorePasscodeCurrent = newCode;
-    return true;
-  }catch(e){
-    toastFail("復元用パスコードの変更", e);
-    return false;
-  }
-}
-
-let restorePasscodeInput = "";
-let restorePasscodeOnSuccess = null;
-let restorePasscodeMode = "unlock"; // "unlock" | "setNew" | "confirmNew"
-let restorePasscodeFirstNew = "";
-
-function renderRestorePasscodeDots(){
-  document.querySelectorAll("#restorePasscodeDots .dot").forEach((d,i)=>{
-    d.classList.toggle("filled", i < restorePasscodeInput.length);
-  });
-}
-function shakeRestorePasscodeDots(msg){
-  const wrap = document.getElementById("restorePasscodeDots");
-  wrap.classList.remove("shake"); void wrap.offsetWidth; wrap.classList.add("shake");
-  document.getElementById("restorePasscodeError").textContent = msg;
-  restorePasscodeInput = "";
-  renderRestorePasscodeDots();
-}
-function openRestorePasscodeModal(onSuccess){
-  restorePasscodeInput = "";
-  restorePasscodeMode = "unlock";
-  restorePasscodeOnSuccess = onSuccess;
-  document.getElementById("restorePasscodeError").textContent = "";
-  document.getElementById("restorePasscodeSub").textContent = "復元するには4桁のパスコードを入力してください";
-  renderRestorePasscodeDots();
-  document.getElementById("restorePasscodeModal").classList.add("show");
+// 旧パスワード/パスコードはもう使わないため、読み込み関数は何もしない（呼び出し側はそのまま）
+async function loadAdminPassword(){}
+async function loadRestorePasscode(){}
+function changeAdminPassword(){
+  showToast("パスワードはFirebaseのAuthentication画面で管理します");
 }
 function startChangeRestorePasscode(){
-  restorePasscodeInput = "";
-  restorePasscodeMode = "setNew";
-  restorePasscodeFirstNew = "";
-  restorePasscodeOnSuccess = null;
-  document.getElementById("restorePasscodeError").textContent = "";
-  document.getElementById("restorePasscodeSub").textContent = "新しい4桁のパスコードを入力してください";
-  renderRestorePasscodeDots();
-  document.getElementById("restorePasscodeModal").classList.add("show");
+  showToast("復元の確認も管理者ログインに変わりました");
 }
-document.getElementById("restorePasscodeKeypad").addEventListener("click", async (e)=>{
-  const btn = e.target.closest("button[data-key]");
-  if(!btn) return;
-  const key = btn.getAttribute("data-key");
-  if(key==="back"){
-    restorePasscodeInput = restorePasscodeInput.slice(0,-1);
-    renderRestorePasscodeDots();
+
+/* ---- 管理者ログイン画面 ---- */
+let atlasAdminLoginOnSuccess = null;
+function atlasEnsureAdminLoginModal(){
+  let ov = document.getElementById("adminLoginModal");
+  if(ov) return ov;
+  const inputStyle = "display:block; width:100%; box-sizing:border-box; border:1.5px solid var(--line); border-radius:10px; padding:11px 12px; font-size:16px; color:var(--ink); background:var(--surface-2,#fff); margin-top:10px;";
+  ov = document.createElement("div");
+  ov.className = "modal-overlay";
+  ov.id = "adminLoginModal";
+  ov.innerHTML = `
+    <div class="modal-sheet">
+      <div class="modal-title">管理者ログイン</div>
+      <div class="modal-sub">管理者アカウントでログインしてください（30分間有効）</div>
+      <input type="email" id="adminLoginEmail" autocomplete="username" placeholder="メールアドレス" style="${inputStyle}">
+      <input type="password" id="adminLoginPassword" autocomplete="current-password" placeholder="パスワード" style="${inputStyle}">
+      <div id="adminLoginError" style="min-height:18px; margin:8px 0 2px; font-size:12.5px; color:var(--alert);"></div>
+      <button class="modal-close" id="adminLoginSubmit" style="background:var(--leaf-600); color:#fff;">ログイン</button>
+      <button class="modal-close" id="adminLoginCancel">キャンセル</button>
+    </div>`;
+  document.body.appendChild(ov);
+
+  const submit = async ()=>{
+    const emailEl = document.getElementById("adminLoginEmail");
+    const pwEl = document.getElementById("adminLoginPassword");
+    const errEl = document.getElementById("adminLoginError");
+    const btn = document.getElementById("adminLoginSubmit");
+    if(btn.disabled) return;
+    if(!emailEl.value.trim() || !pwEl.value){
+      errEl.textContent = "メールアドレスとパスワードを入力してください";
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "確認中…";
+    errEl.textContent = "";
+    try{
+      await atlasAdminLogin(emailEl.value.trim(), pwEl.value);
+      pwEl.value = "";
+      ov.classList.remove("show");
+      isAdmin = true;
+      const cb = atlasAdminLoginOnSuccess;
+      atlasAdminLoginOnSuccess = null;
+      if(cb) cb();
+    }catch(e){
+      pwEl.value = "";
+      errEl.textContent = "ログインに失敗しました。入力内容を確認してください";
+    }finally{
+      btn.disabled = false;
+      btn.textContent = "ログイン";
+    }
+  };
+  document.getElementById("adminLoginSubmit").addEventListener("click", submit);
+  document.getElementById("adminLoginPassword").addEventListener("keydown", (e)=>{
+    if(e.key === "Enter") submit();
+  });
+  document.getElementById("adminLoginCancel").addEventListener("click", ()=>{
+    ov.classList.remove("show");
+    atlasAdminLoginOnSuccess = null;
+    document.getElementById("adminLoginPassword").value = "";
+  });
+  return ov;
+}
+function openAdminLoginModal(onSuccess){
+  const ov = atlasEnsureAdminLoginModal();
+  atlasAdminLoginOnSuccess = onSuccess || null;
+  document.getElementById("adminLoginError").textContent = "";
+  ov.classList.add("show");
+  setTimeout(()=>{
+    const el = document.getElementById("adminLoginEmail");
+    if(el && !el.value) el.focus();
+  }, 50);
+}
+
+/* ---- 呼び出し側は従来どおり「if(!unlockAdmin()) return;」で使える ----
+   未ログインならログイン画面を開いて false を返す。ログイン成功後は画面が管理者表示に
+   切り替わるので、もう一度ボタンを押してもらう。 */
+function unlockAdmin(){
+  if(atlasAdminIsActive()){ isAdmin = true; return true; }
+  isAdmin = false;
+  openAdminLoginModal(()=>{
+    showToast("管理者ログインしました");
+    renderDutyPanel();
+  });
+  return false;
+}
+function lockAdmin(){
+  atlasAdminLogout();
+  isAdmin = false;
+  showToast("管理者モードをロックしました");
+  renderDutyPanel();
+}
+
+/* ---- 栽培管理の「復元」ボタン用：管理者ログインで確認する ---- */
+function openRestorePasscodeModal(onSuccess){
+  if(atlasAdminIsActive()){
+    isAdmin = true;
+    if(onSuccess) onSuccess();
     return;
   }
-  if(restorePasscodeInput.length>=4) return;
-  restorePasscodeInput += key;
-  renderRestorePasscodeDots();
-  if(restorePasscodeInput.length<4) return;
+  openAdminLoginModal(()=>{ if(onSuccess) onSuccess(); });
+}
 
-  if(restorePasscodeMode==="unlock"){
-    if(restorePasscodeInput===restorePasscodeCurrent){
-      document.getElementById("restorePasscodeModal").classList.remove("show");
-      const cb = restorePasscodeOnSuccess;
-      restorePasscodeOnSuccess = null;
-      if(cb) cb();
-    }else{
-      shakeRestorePasscodeDots("パスコードが違います");
-    }
-  }else if(restorePasscodeMode==="setNew"){
-    restorePasscodeFirstNew = restorePasscodeInput;
-    restorePasscodeInput = "";
-    restorePasscodeMode = "confirmNew";
-    document.getElementById("restorePasscodeError").textContent = "";
-    document.getElementById("restorePasscodeSub").textContent = "確認のため、もう一度入力してください";
-    renderRestorePasscodeDots();
-  }else if(restorePasscodeMode==="confirmNew"){
-    if(restorePasscodeInput===restorePasscodeFirstNew){
-      const ok = await setRestorePasscode(restorePasscodeInput);
-      document.getElementById("restorePasscodeModal").classList.remove("show");
-      if(ok) showToast("パスコードを変更しました");
-    }else{
-      restorePasscodeMode = "setNew";
-      restorePasscodeFirstNew = "";
-      document.getElementById("restorePasscodeSub").textContent = "新しい4桁のパスコードを入力してください";
-      shakeRestorePasscodeDots("パスコードが一致しません。もう一度入力してください");
-    }
+/* ---- 有効時間(30分)が切れたら、画面も自動でロック表示に戻す ---- */
+setInterval(()=>{
+  if(isAdmin && !atlasAdminIsActive()){
+    isAdmin = false;
+    showToast("管理者ログインの有効時間が切れました");
+    Promise.resolve(renderDutyPanel()).catch(()=>{});
   }
-});
-document.getElementById("closeRestorePasscodeModal").addEventListener("click", ()=>{
-  document.getElementById("restorePasscodeModal").classList.remove("show");
-  restorePasscodeOnSuccess = null;
-});
-
+}, 5000);
 /* ---- 名簿(ロースター) ---- */
 const ROSTER_DEFAULT = ["木下","清水","杉山","鈴木","諏訪田","瀬川","中野翔","伊藤","中野真","辻","増田","藤井","河野","新宮","杉本","滝口","中村","橋本","和田"];
 let roster = ROSTER_DEFAULT.slice();
@@ -5289,8 +5331,6 @@ async function renderDataPanel(el){
     ${isAdmin ? `
     <div class="duty-actions-row"><div class="scroll-row">
       <button class="lock-btn" id="rosterBtn">🔒 名簿を管理</button>
-      <button class="lock-btn" id="pwChangeBtn">🔒 パスワード変更</button>
-      <button class="lock-btn" id="restorePwChangeBtn">🔒 復元パスコード変更</button>
     </div></div>` : ``}
 
     <div class="me-bar">
