@@ -1235,6 +1235,23 @@ window.fetch=async function(input,init){
 };
 async function ready(){if(auth&&check)return;if(typeof firebase==="undefined"||!firebase.initializeApp||!firebase.auth||!firebase.appCheck)throw Error("diagnostic sdk unavailable");try{app=firebase.app("sentinel-diagnostic-prod")}catch(_){app=firebase.initializeApp(CFG,"sentinel-diagnostic-prod")}auth=app.auth();check=app.appCheck();try{check.activate(new firebase.appCheck.ReCaptchaEnterpriseProvider(SITE),true)}catch(_){}if(!auth.currentUser)await auth.signInAnonymously()}
 async function send(e){await ready();const u=auth.currentUser||(await auth.signInAnonymously()).user,id=await u.getIdToken(),ac=await check.getToken(false),rid=APP+"_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,8);const f={appId:{stringValue:e.appId},occurredAt:{timestampValue:e.time},appVersion:{stringValue:e.appVersion},online:{booleanValue:!!e.online},category:{stringValue:e.category},location:{stringValue:e.location},detail:{stringValue:e.detail}};if(e.httpStatus)f.httpStatus={integerValue:String(e.httpStatus)};const h={Authorization:"Bearer "+id,"Content-Type":"application/json"};if(ac&&ac.token)h["X-Firebase-AppCheck"]=ac.token;const r=await origFetch("https://firestore.googleapis.com/v1/projects/dev-caesar/databases/(default)/documents/sentinelDiagnostics?documentId="+encodeURIComponent(rid),{method:"POST",headers:h,body:JSON.stringify({fields:f}),cache:"no-store"});if(!r.ok)throw Error("diagnostic HTTP "+r.status)}
+function auditDevice(){let d="";try{d=localStorage.getItem("sentinelAuditDevice.v1")||"";if(!d){d=Math.random().toString(36).slice(2,8)+Math.random().toString(36).slice(2,8);localStorage.setItem("sentinelAuditDevice.v1",d)}}catch(_){}return clean(d||"unknown",16)}
+function auditUa(){const u=navigator.userAgent||"";const os=/iPhone/.test(u)?"iPhone":/iPad/.test(u)?"iPad":/Android/.test(u)?"Android":/Macintosh/.test(u)?(navigator.maxTouchPoints>1?"iPad":"Mac"):/Windows/.test(u)?"Windows":/Linux/.test(u)?"Linux":"?";const br=/Edg\//.test(u)?"Edge":/OPR\//.test(u)?"Opera":/Firefox\//.test(u)?"Firefox":/Chrome\//.test(u)?"Chrome":/Safari\//.test(u)?"Safari":"?";return os+" / "+br}
+async function audit(ev){
+  try{
+    await ready();
+    const u=auth.currentUser||(await auth.signInAnonymously()).user,id=await u.getIdToken(),ac=await check.getToken(false);
+    const rid=APP+"_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,8);
+    const f={appId:{stringValue:APP},event:{stringValue:ev.event==="login-ok"?"login-ok":"login-fail"},account:{stringValue:clean(ev.account,100)},device:{stringValue:auditDevice()},ua:{stringValue:auditUa()}};
+    if(ev.uid)f.uid={stringValue:clean(ev.uid,40)};
+    if(ev.detail)f.detail={stringValue:clean(ev.detail,80)};
+    const h={Authorization:"Bearer "+id,"Content-Type":"application/json"};
+    if(ac&&ac.token)h["X-Firebase-AppCheck"]=ac.token;
+    const name="projects/"+CFG.projectId+"/databases/(default)/documents/sentinelAuditLog/"+encodeURIComponent(rid);
+    await origFetch("https://firestore.googleapis.com/v1/projects/"+CFG.projectId+"/databases/(default)/documents:commit",{method:"POST",headers:h,body:JSON.stringify({writes:[{update:{name,fields:f},updateTransforms:[{fieldPath:"recordedAt",setToServerValue:"REQUEST_TIME"}],currentDocument:{exists:false}}]}),cache:"no-store"});
+  }catch(_){}
+}
+window.__sentinelAudit=audit;
 async function flush(){if(busy||navigator.onLine===false)return;busy=true;try{let q=load(QK,[]);while(q.length){try{await send(q[0]);q.shift();save(QK,q)}catch(_){break}}}finally{busy=false}}
 window.addEventListener("error",e=>{if(e&&e.target&&e.target!==window){put("resource-load-error","startup/resource",0,e.target.tagName||"resource")}else put("javascript-error","window",0,e&&e.message||"unknown error")},true);
 window.addEventListener("unhandledrejection",e=>{const r=e&&e.reason;put("unhandled-rejection","promise",Number(r&&r.httpStatus)||0,r&&r.name||r&&r.code||"rejection")});window.addEventListener("online",flush);window.addEventListener("load",()=>setTimeout(()=>{flush();ready().catch(()=>{})},1200),{once:true});setTimeout(flush,3500);
@@ -1431,9 +1448,15 @@ function atlasAdminLoginNoteFailure(code){
       }
     }catch(e){}
   }
+  return st.n;
 }
 function atlasAdminLoginClearFailures(){
   try{ localStorage.removeItem(ATLAS_LOGIN_FAIL_KEY); }catch(e){}
+}
+function atlasAdminAudit(ev){
+  try{
+    if(typeof window.__sentinelAudit === "function") window.__sentinelAudit(ev);
+  }catch(e){}
 }
 
 async function atlasAdminLogin(email, password){
@@ -1449,9 +1472,20 @@ async function atlasAdminLogin(email, password){
       const j = await res.json();
       code = String((j && j.error && j.error.message) || "").split(/[\s:]/)[0].replace(/[^A-Z_]/g, "").slice(0, 40);
     }catch(e){}
-    atlasAdminLoginNoteFailure(code || ("HTTP_" + res.status));
+    code = code || ("HTTP_" + res.status);
+    const n = atlasAdminLoginNoteFailure(code);
+    atlasAdminAudit({ event: "login-fail", account: email, detail: "fails=" + n + " " + code });
     throw new Error("ADMIN_LOGIN_FAILED");
   }
+  const data = await res.json();
+  if(!data.idToken) throw new Error("ADMIN_LOGIN_FAILED");
+  atlasAdminLoginClearFailures();
+  atlasAdminAudit({ event: "login-ok", account: data.email || email, uid: data.localId });
+  const tokenLife = (Number(data.expiresIn) || 3600) * 1000 - 60000;
+  atlasAdminIdToken = data.idToken;
+  atlasAdminExpiresAt = Date.now() + Math.min(ATLAS_ADMIN_WINDOW_MS, tokenLife);
+  return true;
+}
   const data = await res.json();
   if(!data.idToken) throw new Error("ADMIN_LOGIN_FAILED");
   atlasAdminLoginClearFailures();
