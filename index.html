@@ -1486,14 +1486,6 @@ async function atlasAdminLogin(email, password){
   atlasAdminExpiresAt = Date.now() + Math.min(ATLAS_ADMIN_WINDOW_MS, tokenLife);
   return true;
 }
-  const data = await res.json();
-  if(!data.idToken) throw new Error("ADMIN_LOGIN_FAILED");
-  atlasAdminLoginClearFailures();
-  const tokenLife = (Number(data.expiresIn) || 3600) * 1000 - 60000;
-  atlasAdminIdToken = data.idToken;
-  atlasAdminExpiresAt = Date.now() + Math.min(ATLAS_ADMIN_WINDOW_MS, tokenLife);
-  return true;
-}
 async function atlasRestAuthHeaders(){
   let token;
   if(atlasAdminIsActive()){
